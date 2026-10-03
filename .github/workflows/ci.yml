@@ -1,11 +1,13 @@
-# Eye of God — continuous integration.
+# Eye of God — continuous integration and deployment.
 #
-# Runs on every push to main and on every pull request, once the repository is
-# on GitHub. The repository root is eye-of-god-ui/: graphify-out/ is not in it,
-# so the build uses the versioned graph-snapshot/graph.json.
+# Runs on every push to main, on every pull request and by hand. The repository
+# root is eye-of-god-ui/: graphify-out/ is not in it, so the build uses the
+# versioned graph-snapshot/graph.json.
 #
-# Pipeline: graph snapshot → typecheck → unit tests → production build → dist check → E2E on that build.
-# Any failing step fails the run. It never runs Graphify and never deploys.
+# verify: graph snapshot → typecheck → unit tests → production build → dist check → E2E on that build.
+# deploy: only for main (push or by hand), only if verify passed: publishes to
+#         GitHub Pages the very dist/ that verify tested. Pull requests never deploy.
+# Any failing step fails the run. It never runs Graphify.
 name: Eye of God CI
 
 on:
@@ -73,10 +75,38 @@ jobs:
           path: e2e-results
           retention-days: 7
 
-      # The verified site, ready to publish to any static host. Nothing is published from here.
+      # The verified site, ready to publish to any static host.
       - name: Keep the verified site
         uses: actions/upload-artifact@v4
         with:
           name: eye-of-god-dist
           path: dist
           retention-days: 14
+
+      # The same dist/, packaged for the deploy job below. Only on main.
+      - name: Package the verified site for GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only this job can publish, and only through GitHub's own short-lived credentials.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One deployment at a time; a newer one waits instead of interrupting it.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

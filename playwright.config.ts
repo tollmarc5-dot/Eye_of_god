@@ -17,6 +17,11 @@ const PORT = 4173
 const channelSetting = process.env.EOG_E2E_CHANNEL
 const channel = channelSetting === undefined ? 'chrome' : channelSetting || undefined
 const isCi = Boolean(process.env.CI)
+/**
+ * EOG_E2E_BASE_URL runs the same suite against a deployed site (e.g. the public
+ * URL) instead of the local build; no local server is started then.
+ */
+const remoteBaseUrl = process.env.EOG_E2E_BASE_URL
 
 export default defineConfig({
   testDir: 'e2e',
@@ -31,16 +36,18 @@ export default defineConfig({
   forbidOnly: true,
   reporter: isCi ? [['github'], ['list']] : [['list']],
   use: {
-    baseURL: `http://127.0.0.1:${PORT}/`,
+    baseURL: remoteBaseUrl ?? `http://127.0.0.1:${PORT}/`,
     channel,
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: `npx vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
-    url: `http://127.0.0.1:${PORT}/`,
-    reuseExistingServer: false,
-    timeout: 30_000,
-  },
+  webServer: remoteBaseUrl
+    ? undefined
+    : {
+        command: `npx vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
+        url: `http://127.0.0.1:${PORT}/`,
+        reuseExistingServer: false,
+        timeout: 30_000,
+      },
 })
