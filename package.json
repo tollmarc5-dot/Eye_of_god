@@ -1,0 +1,48 @@
+{
+  "name": "eye-of-god-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "test:e2e": "npm run build && playwright test",
+    "check:dist": "node scripts/check-dist.mjs",
+    "graph:status": "node scripts/graph-snapshot.mjs status",
+    "graph:sync": "node scripts/graph-snapshot.mjs sync",
+    "verify": "npm run graph:status && npm run typecheck && npm test && vite build && npm run check:dist && npm run e2e"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "graphology": "^0.26.0",
+    "graphology-components": "^1.5.4",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "sigma": "^3.0.3",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "graphology-types": "^0.24.8",
+    "jsdom": "^30.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

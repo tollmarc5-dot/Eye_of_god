@@ -1,0 +1,23 @@
+# Dependencies and build output: always reproducible from package-lock.json and the sources.
+node_modules
+dist
+coverage
+.vite
+
+# Test output
+e2e-results
+playwright-report
+test-results
+
+# Local environment and secrets: never versioned.
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+
+# Logs and system files
+*.log
+.DS_Store
+Thumbs.db

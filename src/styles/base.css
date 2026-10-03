@@ -1,0 +1,91 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--eog-bg-deep);
+  color: var(--eog-text);
+  font-family: var(--eog-font-sans);
+  font-size: var(--eog-text-md);
+  line-height: 1.5;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+ul {
+  margin: 0;
+  padding: 0;
+}
+
+ul {
+  list-style: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--eog-cyan);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--eog-cyan-soft);
+}
+
+/* Thin, quiet scrollbars inside panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--eog-border-strong) transparent;
+}
+
+.eog-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Shared text roles */
+.eog-label {
+  font-family: var(--eog-font-mono);
+  font-size: var(--eog-text-xs);
+  font-weight: 500;
+  letter-spacing: var(--eog-tracking-label);
+  text-transform: uppercase;
+  color: var(--eog-text-faint);
+}
+
+.eog-mono {
+  font-family: var(--eog-font-mono);
+  font-size: var(--eog-text-sm);
+  font-variant-numeric: tabular-nums;
+}

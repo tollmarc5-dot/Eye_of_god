@@ -1,0 +1,463 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { adaptGraphify } from '@/data'
+import { applyPositions, buildGraph, buildGraphIndex } from '@/graph'
+import { createSigmaRenderer, framingRatio, LABEL_THRESHOLD_BY_LEVEL, zoomLevelForRatio } from '@/renderer'
+import { EMPTY_VIEW_STATE } from '@/renderer/reducers'
+import { CAMERA_RATIO_LIMITS } from '@/renderer/zoom-level'
+import { decodeViewState } from '@/state/url-state'
+import { makeRawGraph } from './fixtures'
+
+const contextModel = adaptGraphify(makeRawGraph())
+const context = { model: contextModel, index: buildGraphIndex(contextModel) }
+
+type Handler = (payload: { node: string }) => void
+
+// Sigma needs WebGL, which does not exist in Node: this fake records how the
+// renderer drives it. Real rendering is covered by the browser check.
+const fake = vi.hoisted(() => {
+  class FakeSigma {
+    static instances: FakeSigma[] = []
+    handlers = new Map<string, Handler>()
+    cameraHandlers = new Map<string, (state: { ratio: number }) => void>()
+    camera = {
+      on: (event: string, handler: (state: { ratio: number }) => void) => {
+        this.cameraHandlers.set(event, handler)
+      },
+      animate: vi.fn(() => Promise.resolve()),
+      animatedZoom: vi.fn(() => Promise.resolve()),
+      animatedUnzoom: vi.fn(() => Promise.resolve()),
+      animatedReset: vi.fn(() => Promise.resolve()),
+      getState: vi.fn(() => ({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })),
+      disable: vi.fn(),
+    }
+    hoveredNode: string | null = null
+    refresh = vi.fn()
+    scheduleRender = vi.fn()
+    kill = vi.fn()
+    setSetting = vi.fn()
+    setCustomBBox = vi.fn()
+    getNodeDisplayData = vi.fn((id: string) => (id === 'missing' ? undefined : { x: 0.3, y: 0.7 }))
+    graphToViewport = vi.fn(() => ({ x: 120, y: 80 }))
+    framedGraphToViewport = vi.fn(({ x, y }: { x: number; y: number }) => ({ x: x * 1000, y: y * 1000 }))
+
+    constructor(
+      public graph: unknown,
+      public container: unknown,
+      public settings: Record<string, unknown>,
+    ) {
+      FakeSigma.instances.push(this)
+    }
+    on(event: string, handler: Handler) {
+      this.handlers.set(event, handler)
+    }
+    once(event: string, handler: Handler) {
+      this.handlers.set(event, handler)
+    }
+    getCamera() {
+      return this.camera
+    }
+    emit(event: string, node = '') {
+      this.handlers.get(event)?.({ node })
+    }
+  }
+  return { FakeSigma }
+})
+
+vi.mock('sigma', () => ({ default: fake.FakeSigma }))
+// The program base classes touch WebGL as soon as they are imported.
+vi.mock('sigma/rendering', () => ({ NodeProgram: class {}, EdgeProgram: class {} }))
+vi.mock('sigma/utils', () => ({ floatColor: () => 0 }))
+
+function setup(events: Parameters<typeof createSigmaRenderer>[2] = {}) {
+  const model = adaptGraphify(makeRawGraph())
+  const graph = buildGraph(model)
+  applyPositions(graph, new Map(model.nodes.map((node, i) => [node.id, { x: i * 10, y: i * 5 }])))
+  const listeners = new Map<string, () => void>()
+  const container = {
+    style: { cursor: '' },
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+    removeEventListener: (type: string) => listeners.delete(type),
+  } as unknown as HTMLElement
+  const renderer = createSigmaRenderer(container, graph, events, { cameraDuration: 0 })
+  const sigma = fake.FakeSigma.instances.at(-1)
+  if (!sigma) throw new Error('Sigma was not instantiated')
+  return { renderer, sigma, graph, container, listeners }
+}
+
+beforeEach(() => {
+  fake.FakeSigma.instances.length = 0
+})
+
+describe('createSigmaRenderer', () => {
+  test('creates one Sigma instance on the container with both reducers', () => {
+    const { sigma, graph, container } = setup()
+
+    expect(fake.FakeSigma.instances).toHaveLength(1)
+    expect(sigma.graph).toBe(graph)
+    expect(sigma.container).toBe(container)
+    expect(sigma.settings.nodeReducer).toBeTypeOf('function')
+    expect(sigma.settings.edgeReducer).toBeTypeOf('function')
+  })
+
+  test('destroy kills the Sigma instance and silences a camera transition in flight', () => {
+    const { renderer, sigma } = setup()
+
+    renderer.destroy()
+
+    expect(sigma.kill).toHaveBeenCalledOnce()
+    expect(sigma.camera.disable).toHaveBeenCalledOnce()
+  })
+
+  test('reports node clicks, stage clicks and the first render', () => {
+    const onNodeClick = vi.fn()
+    const onStageClick = vi.fn()
+    const onFirstRender = vi.fn()
+    const { sigma } = setup({ onNodeClick, onStageClick, onFirstRender })
+
+    sigma.emit('clickNode', 'os')
+    sigma.emit('clickStage')
+    sigma.emit('afterRender')
+
+    expect(onNodeClick).toHaveBeenCalledWith('os')
+    expect(onStageClick).toHaveBeenCalledOnce()
+    expect(onFirstRender).toHaveBeenCalledOnce()
+  })
+
+  test('the first render is reported once, however many frames follow', () => {
+    const onFirstRender = vi.fn()
+    const { sigma } = setup({ onFirstRender })
+
+    sigma.emit('afterRender')
+    sigma.emit('afterRender')
+
+    expect(onFirstRender).toHaveBeenCalledOnce()
+  })
+
+  test('the camera cannot zoom out of the readable range, by any control', () => {
+    const { sigma } = setup()
+
+    expect(sigma.settings.minCameraRatio).toBe(CAMERA_RATIO_LIMITS.min)
+    expect(sigma.settings.maxCameraRatio).toBe(CAMERA_RATIO_LIMITS.max)
+    // Every reachable camera is a camera a shared link can restore.
+    expect(decodeViewState(`?cam=0.5,0.5,${CAMERA_RATIO_LIMITS.min}`, context).camera?.ratio).toBe(CAMERA_RATIO_LIMITS.min)
+    expect(decodeViewState(`?cam=0.5,0.5,${CAMERA_RATIO_LIMITS.max}`, context).camera?.ratio).toBe(CAMERA_RATIO_LIMITS.max)
+  })
+
+  test("a frame's labels are collected while Sigma renders and drawn together when it is done", () => {
+    const { sigma } = setup()
+    const fillText = vi.fn()
+    const labelContext = {
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      strokeText: vi.fn(),
+      fillText,
+    } as unknown as CanvasRenderingContext2D
+    const drawLabel = sigma.settings.defaultDrawNodeLabel as (
+      context: CanvasRenderingContext2D,
+      data: object,
+      settings: object,
+    ) => void
+    const settings = { labelSize: 12, labelFont: 'sans-serif', labelWeight: '500' }
+
+    sigma.emit('beforeRender')
+    drawLabel(labelContext, { key: 'a', label: 'first', x: 100, y: 100, size: 10 }, settings)
+    drawLabel(labelContext, { key: 'b', label: 'second', x: 112, y: 101, size: 4 }, settings)
+    expect(fillText).not.toHaveBeenCalled()
+    sigma.emit('afterRender')
+
+    expect(fillText.mock.calls.map(([text]) => text)).toEqual(['first', 'second'])
+    // 'second' would start on top of 'first': it is drawn on the other side of its node.
+    expect(fillText.mock.calls[1]?.[1]).toBeLessThan(112)
+  })
+
+  test('selection only restyles: no re-indexing, no new bounding box', () => {
+    const { renderer, sigma } = setup()
+
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+    expect(sigma.refresh).toHaveBeenCalledWith({ skipIndexation: true })
+    expect(sigma.setCustomBBox).not.toHaveBeenCalled()
+  })
+
+  test('a visibility change frames the camera on the visible nodes only', () => {
+    const { renderer, sigma } = setup()
+
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, visibleNodeIds: new Set(['app_index', 'app_index_main']) })
+
+    expect(sigma.setCustomBBox).toHaveBeenCalledWith({ x: [0, 10], y: [0, 5] })
+    expect(sigma.setSetting).toHaveBeenCalledWith('hideEdgesOnMove', false)
+  })
+
+  test('hover is resolved inside the renderer and sets the pointer cursor', () => {
+    const { sigma, container } = setup()
+
+    sigma.emit('enterNode', 'os')
+    expect(container.style.cursor).toBe('pointer')
+    expect(sigma.refresh).toHaveBeenLastCalledWith({ skipIndexation: true })
+
+    sigma.emit('leaveNode')
+    expect(container.style.cursor).toBe('')
+  })
+})
+
+describe('hover clean-up', () => {
+  test('leaving the canvas drops the hovered node Sigma would keep painting', () => {
+    const { sigma, listeners, container } = setup()
+    sigma.emit('enterNode', 'os')
+    sigma.hoveredNode = 'os'
+
+    listeners.get('mouseleave')?.()
+
+    expect(sigma.hoveredNode).toBeNull()
+    expect(container.style.cursor).toBe('')
+  })
+
+  test('destroy removes the listener it added', () => {
+    const { renderer, listeners } = setup()
+
+    renderer.destroy()
+
+    expect(listeners.has('mouseleave')).toBe(false)
+  })
+})
+
+describe('level of detail', () => {
+  test('raises label density when the camera crosses a zoom level', () => {
+    const { sigma } = setup()
+
+    sigma.cameraHandlers.get('updated')?.({ ratio: 0.5 })
+    sigma.cameraHandlers.get('updated')?.({ ratio: 0.45 })
+
+    const labelCalls = sigma.setSetting.mock.calls.filter(([key]) => key === 'labelRenderedSizeThreshold')
+    expect(labelCalls).toEqual([['labelRenderedSizeThreshold', LABEL_THRESHOLD_BY_LEVEL.structure]])
+  })
+
+  test('reports the view throttled, not once per camera update', () => {
+    vi.useFakeTimers()
+    const onViewChange = vi.fn()
+    const { sigma } = setup({ onViewChange })
+    sigma.camera.getState.mockReturnValue({ x: 0.5, y: 0.5, ratio: 0.2, angle: 0 })
+
+    for (let i = 0; i < 10; i += 1) sigma.cameraHandlers.get('updated')?.({ ratio: 0.2 })
+    vi.runAllTimers()
+    vi.useRealTimers()
+
+    expect(onViewChange).toHaveBeenCalledOnce()
+    expect(onViewChange).toHaveBeenCalledWith({ level: 'detail', zoomPercent: 500 })
+  })
+})
+
+describe('zoomLevelForRatio', () => {
+  test.each([
+    [1, 'universe'],
+    [0.7, 'universe'],
+    [0.5, 'structure'],
+    [0.25, 'structure'],
+    [0.2, 'detail'],
+  ])('ratio %s is the %s level', (ratio, level) => {
+    expect(zoomLevelForRatio(ratio)).toBe(level)
+  })
+})
+
+describe('camera', () => {
+  test('focusNode moves the camera onto the node', () => {
+    const { renderer, sigma } = setup()
+
+    const moved = renderer.focusNode('os')
+
+    expect(moved).toBe(true)
+    expect(sigma.camera.animate).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 0.3, y: 0.7 }),
+      expect.objectContaining({ duration: 0 }),
+    )
+  })
+
+  test('focusNode does nothing for hidden or unknown nodes', () => {
+    const { renderer, sigma } = setup()
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, visibleNodeIds: new Set(['app_index']) })
+
+    expect(renderer.focusNode('os')).toBe(false)
+    expect(renderer.focusNode('missing')).toBe(false)
+    expect(sigma.camera.animate).not.toHaveBeenCalled()
+  })
+
+  test('frameNeighborhood centres the camera on the node and its drawn neighbours', () => {
+    const { renderer, sigma, container } = setup()
+    Object.assign(container, { clientWidth: 1000, clientHeight: 800 })
+    const displayed: Record<string, { x: number; y: number }> = {
+      app_index_main: { x: 0.5, y: 0.5 },
+      app_index: { x: 0.4, y: 0.5 },
+      os: { x: 0.6, y: 0.7 },
+    }
+    sigma.getNodeDisplayData.mockImplementation((id: string) => displayed[id] ?? { x: 0.9, y: 0.9 })
+    // The third-party neighbour is filtered out, so it must not widen the frame.
+    renderer.setViewState({
+      ...EMPTY_VIEW_STATE,
+      visibleNodeIds: new Set(['app_index', 'app_index_main', 'os', 'lonely']),
+    })
+
+    expect(renderer.frameNeighborhood('app_index_main')).toBe(true)
+
+    const [target] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number; y: number; ratio: number }]
+    expect(target.x).toBeCloseTo(0.5)
+    expect(target.y).toBeCloseTo(0.6)
+    // 200 × 200 px on screen, 904 × 560 px free: the taller side decides.
+    expect(target.ratio).toBeCloseTo(200 / 560)
+  })
+
+  test('frameNeighborhood falls back to focus without neighbours and refuses hidden nodes', () => {
+    const { renderer, sigma, container } = setup()
+    Object.assign(container, { clientWidth: 1000, clientHeight: 800 })
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, visibleNodeIds: new Set(['lonely']) })
+
+    expect(renderer.frameNeighborhood('lonely')).toBe(true)
+    expect(sigma.camera.animate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ratio: 0.2 }),
+      expect.anything(),
+    )
+    expect(renderer.frameNeighborhood('os')).toBe(false)
+    expect(renderer.frameNeighborhood('ghost')).toBe(false)
+  })
+
+  test('zoom and reset delegate to the Sigma camera', () => {
+    const { renderer, sigma } = setup()
+
+    renderer.zoomIn()
+    renderer.zoomOut()
+    renderer.resetCamera()
+
+    expect(sigma.camera.animatedZoom).toHaveBeenCalledOnce()
+    expect(sigma.camera.animatedUnzoom).toHaveBeenCalledOnce()
+    expect(sigma.camera.animatedReset).toHaveBeenCalledOnce()
+    expect(renderer.getCamera()).toEqual({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })
+  })
+
+  test('setCamera jumps to the given camera and cancels any transition', () => {
+    const { renderer, sigma } = setup()
+
+    renderer.setCamera({ x: 0.31, y: 0.62, ratio: 0.4 })
+
+    expect(sigma.camera.animate).toHaveBeenLastCalledWith(
+      { x: 0.31, y: 0.62, ratio: 0.4, angle: 0 },
+      { duration: 0 },
+    )
+  })
+
+  test('reports the camera on the same throttle as the view', () => {
+    vi.useFakeTimers()
+    const onCameraChange = vi.fn()
+    const { sigma } = setup({ onCameraChange })
+    sigma.camera.getState.mockReturnValue({ x: 0.4, y: 0.6, ratio: 0.5, angle: 0 })
+
+    for (let i = 0; i < 10; i += 1) sigma.cameraHandlers.get('updated')?.({ ratio: 0.5 })
+    vi.runAllTimers()
+    vi.useRealTimers()
+
+    expect(onCameraChange).toHaveBeenCalledOnce()
+    expect(onCameraChange).toHaveBeenCalledWith({ x: 0.4, y: 0.6, ratio: 0.5, angle: 0 })
+  })
+
+  test('reports where a visible node is on screen', () => {
+    const { renderer } = setup()
+
+    expect(renderer.getNodeViewportPosition('os')).toEqual({ x: 120, y: 80 })
+    expect(renderer.getNodeViewportPosition('ghost')).toBeNull()
+  })
+})
+
+describe('living graph loop', () => {
+  function withAnimationFrames(run: (step: (now: number) => void) => void) {
+    let pending: ((now: number) => void) | null = null
+    const request = vi.fn((callback: (now: number) => void) => {
+      pending = callback
+      return 1
+    })
+    const cancel = vi.fn(() => {
+      pending = null
+    })
+    vi.stubGlobal('requestAnimationFrame', request)
+    vi.stubGlobal('cancelAnimationFrame', cancel)
+    try {
+      run((now) => {
+        const callback = pending
+        pending = null
+        callback?.(now)
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    return { request, cancel }
+  }
+
+  test('asks Sigma for one redraw per frame and never re-indexes the graph', () => {
+    withAnimationFrames((step) => {
+      const { sigma, renderer } = setup()
+      sigma.refresh.mockClear()
+
+      step(0)
+      step(16)
+      step(32)
+
+      expect(sigma.scheduleRender).toHaveBeenCalledTimes(3)
+      expect(sigma.refresh).not.toHaveBeenCalled()
+      expect(renderer.getMotionQuality()).toBe('full')
+    })
+  })
+
+  test('reduced motion never starts the loop, and interaction still works', () => {
+    const { request } = withAnimationFrames(() => {
+      const model = adaptGraphify(makeRawGraph())
+      const graph = buildGraph(model)
+      const container = {
+        style: { cursor: '' },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as HTMLElement
+      const renderer = createSigmaRenderer(container, graph, {}, { reducedMotion: true })
+      const sigma = fake.FakeSigma.instances.at(-1)
+
+      renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+      expect(renderer.getMotionQuality()).toBe('still')
+      expect(sigma?.scheduleRender).not.toHaveBeenCalled()
+      expect(sigma?.refresh).toHaveBeenCalledWith({ skipIndexation: true })
+    })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  test('slow frames step the quality down until the loop stops by itself', () => {
+    const { request } = withAnimationFrames((step) => {
+      const { renderer } = setup()
+      let now = 0
+      // Two slow windows (full → calm → still), then time for the drift to ease to zero.
+      for (let frame = 0; frame < 600; frame += 1) step((now += 40))
+
+      expect(renderer.getMotionQuality()).toBe('still')
+    })
+    // Far fewer than the 600 frames offered: nothing keeps running once still.
+    expect(request.mock.calls.length).toBeLessThan(400)
+  })
+
+  test('destroy cancels the pending frame', () => {
+    const { cancel } = withAnimationFrames(() => {
+      setup().renderer.destroy()
+    })
+
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+})
+
+describe('framingRatio', () => {
+  const wide = { x: [0, 400], y: [0, 100] } as { x: [number, number]; y: [number, number] }
+  const tall = { x: [0, 100], y: [0, 400] } as { x: [number, number]; y: [number, number] }
+
+  test('zooms out just enough for a wide scope to clear the side panels', () => {
+    // Drawn 1296px wide at ratio 1; only 800px are free between the panels.
+    expect(framingRatio(wide, 1440, 900, 320)).toBeCloseTo(1296 / 800)
+  })
+
+  test('leaves Sigma\'s own fit alone when the graph already clears the panels', () => {
+    expect(framingRatio(tall, 1440, 900, 320)).toBe(1)
+    expect(framingRatio(wide, 1440, 900, 0)).toBe(1)
+    expect(framingRatio(null, 1440, 900, 320)).toBe(1)
+  })
+})

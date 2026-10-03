@@ -1,0 +1,250 @@
+/* The world fills the viewport; everything else floats above it as HUD. */
+.eog-shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ---------- World backdrop: static layers, no animation ---------- */
+.eog-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 58% 52% at 50% 50%, var(--eog-bg-glow), transparent 72%),
+    radial-gradient(ellipse 70% 50% at 82% 8%, rgba(108, 92, 231, 0.07), transparent 70%),
+    radial-gradient(ellipse 90% 60% at 50% 115%, rgba(79, 227, 255, 0.05), transparent 65%),
+    linear-gradient(180deg, #050a17 0%, var(--eog-bg) 45%, var(--eog-bg-deep) 100%);
+}
+
+.eog-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--eog-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--eog-grid) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, #000 10%, transparent 82%);
+}
+
+/* Vignette: pulls the eye to the centre and gives the HUD edges some depth. */
+.eog-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 220px 40px var(--eog-bg-deep);
+}
+
+.eog-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: #a9c8ff;
+  mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, #000 30%, transparent 95%);
+}
+
+.eog-orbits {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--eog-orbit);
+}
+
+.eog-world {
+  position: absolute;
+  inset: 0;
+  z-index: var(--eog-z-world);
+}
+
+.eog-world canvas {
+  outline: none;
+}
+
+/* ---------- HUD layer ---------- */
+.eog-hud {
+  position: absolute;
+  inset: 0;
+  z-index: var(--eog-z-hud);
+  pointer-events: none;
+}
+
+.eog-hud > * {
+  pointer-events: auto;
+}
+
+.eog-topbar {
+  position: absolute;
+  top: var(--eog-gutter);
+  left: var(--eog-gutter);
+  right: var(--eog-gutter);
+  height: var(--eog-topbar-height);
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 380px) 1fr;
+  align-items: center;
+  gap: var(--eog-space-4);
+  /* Above the panels: the search results drop over them on narrow screens. */
+  z-index: var(--eog-z-topbar);
+  pointer-events: none;
+}
+
+.eog-topbar > * {
+  pointer-events: auto;
+}
+
+.eog-topbar__end {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--eog-space-4);
+}
+
+.eog-explorer,
+.eog-inspector {
+  position: absolute;
+  top: calc(var(--eog-gutter) * 2 + var(--eog-topbar-height));
+  z-index: var(--eog-z-panel);
+}
+
+.eog-explorer {
+  left: var(--eog-gutter);
+  bottom: calc(var(--eog-gutter) * 2 + var(--eog-dock-height));
+  width: var(--eog-explorer-width);
+}
+
+.eog-inspector {
+  right: var(--eog-gutter);
+  width: var(--eog-inspector-width);
+  max-height: calc(100% - var(--eog-gutter) * 4 - var(--eog-topbar-height) - var(--eog-dock-height));
+}
+
+.eog-panel-tab {
+  position: absolute;
+  top: calc(var(--eog-gutter) * 2 + var(--eog-topbar-height));
+  z-index: var(--eog-z-panel);
+}
+
+.eog-panel-tab--left {
+  left: var(--eog-gutter);
+}
+
+.eog-panel-tab--right {
+  right: var(--eog-gutter);
+}
+
+.eog-dock {
+  position: absolute;
+  left: 50%;
+  bottom: var(--eog-gutter);
+  transform: translateX(-50%);
+  z-index: var(--eog-z-panel);
+}
+
+.eog-readout {
+  position: absolute;
+  right: var(--eog-gutter);
+  bottom: var(--eog-gutter);
+  height: var(--eog-dock-height);
+}
+
+.eog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--eog-z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--eog-space-5);
+  pointer-events: none;
+}
+
+.eog-overlay > * {
+  pointer-events: auto;
+}
+
+/* ---------- Tablet: tighter panels ---------- */
+@media (max-width: 1100px) {
+  :root {
+    --eog-explorer-width: 224px;
+    --eog-inspector-width: 256px;
+    --eog-gutter: 12px;
+  }
+
+  .eog-topbar {
+    grid-template-columns: auto minmax(120px, 1fr) auto;
+  }
+
+  /* Keep only the main figure so the read-out never runs under the dock. */
+  .eog-stats > :nth-child(n + 2) {
+    display: none;
+  }
+
+  /* Same for the bottom read-out: view and zoom stay, the scope is in the explorer. */
+  .eog-readout > :not(:nth-last-child(-n + 2)) {
+    display: none;
+  }
+}
+
+/* ---------- Mobile: panels become bottom sheets, one column of HUD ---------- */
+@media (max-width: 720px) {
+  .eog-topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  /* Search takes its own row under the wordmark, so it stays reachable. */
+  :root {
+    --eog-topbar-height: 92px;
+  }
+
+  .eog-topbar {
+    grid-template-rows: 44px var(--eog-control-size);
+    row-gap: var(--eog-space-2);
+    align-items: center;
+  }
+
+  .eog-topbar__search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* Doubled class: must win over the component's own display rule. */
+  .eog-stats.eog-stats {
+    display: none;
+  }
+
+  /* Share and status share the little room next to the wordmark. */
+  .eog-topbar {
+    column-gap: var(--eog-space-2);
+  }
+
+  .eog-topbar__end {
+    gap: var(--eog-space-2);
+  }
+
+  .eog-explorer,
+  .eog-inspector {
+    top: auto;
+    left: var(--eog-gutter);
+    right: var(--eog-gutter);
+    bottom: calc(var(--eog-gutter) * 2 + var(--eog-dock-height));
+    width: auto;
+    max-height: 46vh;
+  }
+
+  .eog-readout {
+    bottom: auto;
+    top: calc(var(--eog-gutter) * 2 + var(--eog-topbar-height));
+    right: 50%;
+    transform: translateX(50%);
+  }
+
+  .eog-dock {
+    left: var(--eog-gutter);
+    right: var(--eog-gutter);
+    transform: none;
+    display: flex;
+    justify-content: center;
+  }
+}

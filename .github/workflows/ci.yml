@@ -1,0 +1,82 @@
+# Eye of God — continuous integration.
+#
+# Runs on every push to main and on every pull request, once the repository is
+# on GitHub. The repository root is eye-of-god-ui/: graphify-out/ is not in it,
+# so the build uses the versioned graph-snapshot/graph.json.
+#
+# Pipeline: graph snapshot → typecheck → unit tests → production build → dist check → E2E on that build.
+# Any failing step fails the run. It never runs Graphify and never deploys.
+name: Eye of God CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: eog-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # The E2E step alone takes about 8 to 10 minutes without a GPU.
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      # Empty = use the Chromium that Playwright installs below. Locally the
+      # suite uses the installed Google Chrome; a runner is not guaranteed to have it.
+      EOG_E2E_CHANNEL: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install the E2E browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Graph snapshot
+        run: npm run graph:status
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and component tests
+        run: npm test
+
+      # `vite build` and not `npm run build`: the types were just checked.
+      - name: Production build
+        run: npx vite build
+
+      - name: Check dist
+        run: npm run check:dist
+
+      # `e2e` and not `test:e2e`: it tests the dist/ built above, without rebuilding.
+      - name: E2E against the production build
+        run: npm run e2e
+
+      - name: Keep the E2E traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: e2e-results
+          retention-days: 7
+
+      # The verified site, ready to publish to any static host. Nothing is published from here.
+      - name: Keep the verified site
+        uses: actions/upload-artifact@v4
+        with:
+          name: eye-of-god-dist
+          path: dist
+          retention-days: 14

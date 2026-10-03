@@ -1,0 +1,10 @@
+# Text files are stored with LF, whatever the operating system of the clone.
+* text=auto eol=lf
+
+# The published graph must stay byte for byte the one Graphify produced
+# (check:dist compares hashes): no line-ending conversion, no textual diff.
+graph-snapshot/graph.json binary -eol linguist-generated
+
+*.woff binary
+*.woff2 binary
+*.png binary

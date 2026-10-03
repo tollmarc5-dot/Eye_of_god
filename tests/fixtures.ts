@@ -1,0 +1,90 @@
+/** Smallest graph that exercises every adapter rule. Shaped like real Graphify output. */
+export function makeRawGraph() {
+  const link = (source: string, target: string, relation: string) => ({
+    source,
+    target,
+    relation,
+    confidence: 'EXTRACTED',
+    confidence_score: 1.0,
+    weight: 1.0,
+    source_file: 'app/src/index.js',
+    source_location: 'L1',
+    _origin: 'ast',
+  })
+  return {
+    directed: false,
+    multigraph: false,
+    graph: {},
+    nodes: [
+      {
+        id: 'app_index',
+        label: 'index.js',
+        norm_label: 'index.js',
+        community: 0,
+        file_type: 'code',
+        source_file: 'app/src/index.js',
+        source_location: 'L1',
+        _origin: 'ast',
+      },
+      {
+        id: 'app_index_main',
+        label: 'main()',
+        norm_label: 'main()',
+        community: 0,
+        file_type: 'code',
+        source_file: 'app/src/index.js',
+        source_location: 'L10',
+        _origin: 'ast',
+        _callable: true,
+      },
+      {
+        id: 'app_lib_xlsx_min_s',
+        label: 's()',
+        norm_label: 's()',
+        community: 1,
+        file_type: 'code',
+        source_file: 'app/public/lib/xlsx.full.min.js',
+        source_location: 'L3',
+        _callable: true,
+      },
+      {
+        id: 'docs_readme',
+        label: 'Guía',
+        norm_label: 'guia',
+        community: 2,
+        file_type: 'document',
+        // NFD on purpose: "o" + combining acute accent, as macOS paths arrive.
+        source_file: 'mhd-aplicación/README.md',
+        source_location: null,
+        rationale: null,
+      },
+      {
+        id: 'os',
+        label: 'os',
+        norm_label: 'os',
+        community: 0,
+        file_type: 'concept',
+        source_file: '',
+        external: true,
+        type: 'external',
+      },
+      {
+        id: 'lonely',
+        label: 'LICENSE',
+        norm_label: 'license',
+        community: 3,
+        file_type: 'document',
+        source_file: 'LICENSE',
+      },
+    ],
+    links: [
+      link('app_index', 'app_index_main', 'contains'),
+      link('app_index_main', 'app_lib_xlsx_min_s', 'calls'),
+      link('app_index_main', 'os', 'imports'),
+      link('app_index_main', 'app_index_main', 'calls'),
+    ],
+    hyperedges: [
+      { id: 'core', label: 'Core', nodes: ['app_index', 'app_index_main'], relation: 'participate_in' },
+    ],
+  }
+}

@@ -1,0 +1,99 @@
+/*
+ * Eye of God design tokens. Every colour, size and duration used by the UI
+ * comes from here. The canvas layers cannot read CSS variables, so their few
+ * colours are mirrored in canvas-theme.ts: change both together.
+ */
+:root {
+  /* World */
+  --eog-bg: #04070d;
+  --eog-bg-deep: #02040a;
+  --eog-bg-glow: rgba(46, 104, 214, 0.17);
+  --eog-grid: rgba(120, 170, 255, 0.045);
+  --eog-orbit: rgba(79, 227, 255, 0.09);
+
+  /* HUD surfaces: translucent, the world stays visible behind them */
+  --eog-surface: rgba(8, 15, 28, 0.7);
+  --eog-surface-raised: rgba(16, 29, 51, 0.82);
+  --eog-surface-solid: #0a1322;
+  --eog-surface-hover: rgba(126, 170, 230, 0.08);
+  --eog-panel-blur: 14px;
+
+  /* Interaction = cyan. Community colours belong to the graph, never to the UI. */
+  --eog-cyan: #4fe3ff;
+  --eog-cyan-soft: rgba(79, 227, 255, 0.12);
+  --eog-cyan-line: rgba(79, 227, 255, 0.42);
+  --eog-blue: #4d86ff;
+
+  /* Information */
+  --eog-text: #e9f2ff;
+  --eog-text-muted: #9db0cc;
+  --eog-text-faint: #7189a8;
+
+  /* Status (always paired with a text label) */
+  --eog-ok: #5df2c1;
+  --eog-warn: #ffc857;
+  --eog-danger: #ff6b81;
+
+  /* Lines */
+  --eog-border: rgba(126, 170, 230, 0.16);
+  --eog-border-strong: rgba(126, 170, 230, 0.32);
+  --eog-hairline: linear-gradient(90deg, transparent, var(--eog-cyan-line), transparent);
+
+  /* Light */
+  --eog-glow: 0 0 0 1px var(--eog-cyan-line), 0 0 16px rgba(79, 227, 255, 0.16);
+  --eog-shadow-panel: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(160, 200, 255, 0.05);
+
+  /* Space */
+  --eog-space-1: 4px;
+  --eog-space-2: 8px;
+  --eog-space-3: 12px;
+  --eog-space-4: 16px;
+  --eog-space-5: 24px;
+  --eog-space-6: 32px;
+
+  /* Shape: small radii, instrument-like */
+  --eog-radius-sm: 3px;
+  --eog-radius-md: 6px;
+  --eog-control-size: 40px;
+
+  /* Type */
+  --eog-font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --eog-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --eog-text-xs: 0.6875rem;
+  --eog-text-sm: 0.75rem;
+  --eog-text-md: 0.8125rem;
+  --eog-text-lg: 0.9375rem;
+  --eog-text-xl: 1.125rem;
+  --eog-tracking-label: 0.14em;
+  --eog-tracking-display: 0.3em;
+
+  /* Motion */
+  --eog-dur-fast: 120ms;
+  --eog-dur: 180ms;
+  --eog-dur-slow: 280ms;
+  --eog-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Layout */
+  --eog-gutter: 16px;
+  --eog-topbar-height: 44px;
+  --eog-explorer-width: 264px;
+  --eog-inspector-width: 304px;
+  --eog-dock-height: 48px;
+
+  /* Layers */
+  --eog-z-world: 1;
+  --eog-z-hud: 10;
+  --eog-z-panel: 20;
+  --eog-z-topbar: 25;
+  --eog-z-overlay: 30;
+  --eog-z-tooltip: 40;
+}
+
+/* Decorative motion off; state changes become instant but stay visible. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --eog-dur-fast: 0ms;
+    --eog-dur: 0ms;
+    --eog-dur-slow: 0ms;
+  }
+}
