@@ -1,5 +1,7 @@
 # Eye-of-god UI
 
+**En producción: https://tollmarc5-dot.github.io/Eye_of_god/**
+
 Interfaz de exploración del grafo de conocimiento generado por Graphify.
 Lee el grafo en modo solo lectura; nunca lo modifica ni ejecuta Graphify.
 
@@ -96,6 +98,10 @@ y la variable `EOG_E2E_CHANNEL` vacía); lo mismo sirve en local si no hay Chrom
 
 ## Despliegue
 
+**Producción: GitHub Pages, https://tollmarc5-dot.github.io/Eye_of_god/**,
+desplegado por GitHub Actions desde `main` (ver «Integración continua y
+despliegue»). Cada push a `main` que pasa la validación se publica solo.
+
 Eye of God es un **sitio estático**. No tiene backend, base de datos ni servidor
 de aplicación: cualquier servicio que sirva archivos lo puede alojar (GitHub
 Pages, Netlify, Cloudflare Pages, un bucket con CDN, nginx…).
@@ -120,10 +126,11 @@ dist/
 Prueba local: `npm run preview`, o cualquier servidor de archivos
 (`cd dist && python3 -m http.server`), también desde una subcarpeta.
 
-Todavía no hay un destino elegido ni nada publicado. Lo único que distingue a
-un servicio de otro para este proyecto es si permite fijar las cabeceras de
-caché de abajo: Netlify, Cloudflare Pages y nginx lo permiten; GitHub Pages no
-(aplica una caché corta a todo, lo cual es correcto pero menos eficiente).
+Se eligió GitHub Pages porque despliega desde la propia CI sin otra cuenta
+ni secretos, y publica exactamente el `dist/` que ha pasado los e2e. Su único
+límite para este proyecto es que no permite fijar cabeceras por archivo (ver
+«Política de caché»). `dist/` funciona sin cambios en cualquier otro hosting
+estático (Cloudflare Pages, Netlify, nginx…) si algún día hace falta.
 
 Lo que pide cualquier servicio de hosting estático:
 
@@ -143,6 +150,19 @@ Alternativa sin construir en el servicio: publicar el artefacto
 El sitio no tiene control de acceso: quien tenga la URL ve el grafo completo.
 
 ### Política de caché
+
+**En GitHub Pages (medido en producción):** todos los archivos se sirven con
+`Cache-Control: max-age=600` y `ETag`, comprimidos (`graph.json` transfiere
+unos 150 KB de 5,8 MB). No se puede cambiar. En la práctica:
+
+- `graph.json`: la aplicación lo pide con revalidación obligatoria, así que
+  siempre comprueba la versión publicada (304 si no ha cambiado).
+- `index.html` y `assets/`: un navegador puede seguir usando la versión
+  anterior hasta 10 minutos después de un despliegue. Durante ese margen puede
+  combinar la aplicación anterior con el grafo nuevo; funciona mientras el
+  formato de `graph.json` no cambie.
+
+Política recomendada para un hosting que sí permita fijar cabeceras:
 
 | Archivo | Cabecera recomendada | Por qué |
 |---|---|---|
@@ -169,25 +189,42 @@ Ejemplo para servicios que leen un archivo `_headers` (Netlify, Cloudflare Pages
 
 ### Publicar una versión nueva del grafo
 
-1. Generar el grafo con Graphify (fuera de este proyecto; aquí nunca se ejecuta).
+1. Generar el grafo con Graphify en el Mac donde están las carpetas de
+   contenido (manual; este proyecto nunca ejecuta Graphify).
 2. `npm run graph:sync`: actualiza la copia versionada.
 3. `npm run verify`: construye y valida con el grafo nuevo.
-4. Hacer commit de `graph-snapshot/graph.json` y subirlo: la CI repite la
-   validación sobre esa copia.
-5. Publicar el `dist/` verificado.
+4. Commit de `graph-snapshot/graph.json` y `git push origin main`.
+5. La CI valida de nuevo y, si todo pasa, despliega en GitHub Pages. Nada más
+   que hacer a mano.
 
 Sin el paso 2, `npm run verify` falla en su primer paso: la copia versionada ya
 no coincide con la de Graphify.
 
-### Integración continua
+### Integración continua y despliegue
 
 `.github/workflows/ci.yml` (GitHub Actions) se ejecuta en cada push a `main`,
-en cada pull request y a mano. Instala con `npm ci` y el Chromium de
-Playwright, y ejecuta grafo → tipos → tests → build → `check:dist` → e2e
-contra ese build, con `CI=true` (180 s por test, 1 reintento). Cualquier paso
-que falle hace fallar la ejecución. Guarda el `dist/` verificado como
-artefacto (14 días) y, si falla, las trazas de los e2e (7 días). No despliega
-nada ni ejecuta Graphify.
+en cada pull request y a mano (`workflow_dispatch`):
 
-Se activará cuando el repositorio esté en GitHub: el repositorio Git local
-existe (raíz en esta carpeta) pero todavía no tiene remoto.
+| Job | Cuándo | Qué hace |
+|---|---|---|
+| `verify` | Siempre | `npm ci`, Chromium de Playwright, grafo → tipos → tests → build → `check:dist` → e2e contra ese build (`CI=true`: 180 s por test, 1 reintento). Guarda `dist/` como artefacto (14 días) y las trazas e2e si falla (7 días) |
+| `deploy` | Solo en `main` (push o a mano), solo si `verify` pasa | Publica en GitHub Pages el mismo `dist/` que probó `verify` |
+
+Los pull requests se validan pero nunca despliegan. El despliegue usa las
+credenciales temporales de GitHub (`pages: write`, `id-token: write` solo en
+ese job): no hay secretos ni tokens en el repositorio. Nunca ejecuta Graphify.
+
+### Verificar la publicación
+
+- La ejecución en la pestaña *Actions* del repositorio: `verify` y `deploy`
+  en verde; el job `deploy` enlaza la URL publicada.
+- La misma suite e2e contra producción, sin servidor local:
+
+  ```bash
+  EOG_E2E_BASE_URL=https://tollmarc5-dot.github.io/Eye_of_god/ npx playwright test
+  ```
+
+### Qué sigue siendo manual
+
+Ejecutar Graphify, `npm run graph:sync`, el commit y el push. La
+automatización de esa parte (capa 5 en ARCHITECTURE.md) no está implementada.

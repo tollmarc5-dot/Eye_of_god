@@ -696,15 +696,15 @@ canvas, uso solo con teclado) y una prueba funcional por tamaño de pantalla en
 
 ## Infraestructura (Fase 12)
 
-Cinco capas, separadas a propósito:
+Cinco capas, separadas a propósito (estado actualizado en la Fase 14):
 
 | Capa | Qué es | Dónde | Estado |
 |---|---|---|---|
-| 1. Código | Git y repositorio remoto | Repositorio con raíz en `eye-of-god-ui/`, rama `main` | Git local inicializado, sin commits ni remoto |
-| 2. Validación | Tipos, tests, build, `check:dist`, e2e | `npm run verify` y `.github/workflows/ci.yml` | Listo; se activa al subir a GitHub |
-| 3. Aplicación | Sitio estático | `dist/` (o el artefacto `eye-of-god-dist` de la CI) | Listo; sin servicio de hosting elegido |
+| 1. Código | Git y repositorio remoto | https://github.com/tollmarc5-dot/Eye_of_god (público), raíz `eye-of-god-ui/`, rama `main` | Activo |
+| 2. Validación | Tipos, tests, build, `check:dist`, e2e | `npm run verify` y job `verify` de `.github/workflows/ci.yml` | Activo en cada push y pull request |
+| 3. Aplicación | Sitio estático | GitHub Pages, https://tollmarc5-dot.github.io/Eye_of_god/, job `deploy` | Activo desde la Fase 14 |
 | 4. Datos | El grafo publicado | `graph-snapshot/graph.json`, versionado | Idéntico al `graph.json` validado |
-| 5. Automatización | Graphify, regeneración del grafo, despliegue automático | Fuera de este repositorio | Solo diseñada (abajo) |
+| 5. Automatización | Graphify, regeneración del grafo | Fuera de este repositorio | Manual; el despliegue ya es automático |
 
 **Raíz del repositorio en `eye-of-god-ui/`, no en el espacio de trabajo.**
 Graphify 0.9.73 lee `.gitignore` y `.git/info/exclude` además de
@@ -735,12 +735,43 @@ leyendo solo `graphify-out/`.
 2. `npm run graph:sync` actualiza la copia versionada; commit y push en una
    rama.
 3. La CI valida esa rama con el grafo nuevo (tests de contrato, e2e).
-4. Al fusionar en `main`, un paso de despliegue (aún no existe) publicaría el
-   artefacto `eye-of-god-dist` en el hosting elegido.
+4. Al llegar a `main`, el job `deploy` publica en GitHub Pages (existe desde
+   la Fase 14: los pasos 3 y 4 ya son automáticos).
 
-Ejecutarlo a distancia exigiría una máquina con el contenido y Graphify (un
-runner propio, o este Mac con una tarea programada) y credenciales para hacer
-push: decisiones que no se han tomado.
+Lo que falta automatizar son los pasos 1 y 2. Ejecutarlos a distancia exigiría
+una máquina con el contenido y Graphify (un runner propio, o este Mac con una
+tarea programada) y credenciales para hacer push: decisiones que no se han
+tomado.
+
+## Despliegue (Fase 14)
+
+**Hosting: GitHub Pages**, publicado desde GitHub Actions (fuente «GitHub
+Actions» en la configuración de Pages del repositorio). URL:
+https://tollmarc5-dot.github.io/Eye_of_god/
+
+```
+push a main → job verify (npm ci → grafo → tipos → tests → build → check:dist → e2e)
+            → mismo dist/ empaquetado (actions/upload-pages-artifact)
+            → job deploy (actions/deploy-pages, entorno github-pages) → producción
+```
+
+- `deploy` depende de `verify`: si falla cualquier paso, no se publica nada.
+- Los pull requests se validan pero nunca despliegan.
+- Solo `deploy` tiene `pages: write` e `id-token: write`; el resto del
+  workflow, `contents: read`. No hay secretos en el repositorio.
+- Lo publicado es el `dist/` que pasó los e2e, no un build nuevo.
+- `base: './'` se mantiene: el sitio vive en la subcarpeta `/Eye_of_god/` y
+  todas las rutas son relativas.
+
+**Por qué GitHub Pages.** Comparado con Cloudflare Pages y Netlify, es el único
+que despliega desde la CI existente sin cuenta externa ni tokens, y es
+gratuito para repositorios públicos. Su límite: cabeceras fijas
+(`Cache-Control: max-age=600` + `ETag` para todo, medido en producción); ver
+la política de caché en el README.
+
+**Verificación de producción.** `EOG_E2E_BASE_URL` hace que Playwright pruebe
+una URL desplegada en lugar del build local (sin servidor). Primera
+publicación: los 43 e2e pasan contra la URL pública.
 
 ## Mediciones
 
@@ -863,7 +894,7 @@ fue de 37–38 MB; es un valor aproximado y exclusivo de Chromium.
 
 ## Siguiente fase
 
-Faltan decisiones del propietario: autor de los commits, proveedor y
-visibilidad del repositorio remoto (el grafo describe el código de
-`mhd-apliación`), y servicio de hosting. Con eso: primer commit, push, primera
-ejecución real de la CI y publicación.
+Eye of God está publicado. La siguiente fase prevista es «Final product design
++ future extensibility». Sigue siendo manual la regeneración del grafo
+(Graphify, `graph:sync`, commit y push); el despliegue a partir de ahí es
+automático.
