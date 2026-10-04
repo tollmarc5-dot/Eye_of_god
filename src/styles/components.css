@@ -879,6 +879,29 @@ button.eog-link.eog-list-note {
   animation: eog-enter var(--eog-dur-slow) var(--eog-ease);
 }
 
+/* Pinned to the top while the rest scrolls, like the actions at the bottom:
+   the inspected node is always named. Opaque so nothing reads through it. */
+.eog-node-identity {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--eog-space-4) var(--eog-space-4) var(--eog-space-3);
+  background: var(--eog-surface-solid);
+  border-bottom: 1px solid var(--eog-border);
+  animation: eog-enter var(--eog-dur-slow) var(--eog-ease);
+}
+
+/* The identity above already draws the dividing line. */
+.eog-node > .eog-node__heading:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.eog-node > .eog-node__note:first-child {
+  margin-top: 0;
+}
+
 @keyframes eog-enter {
   from {
     opacity: 0;

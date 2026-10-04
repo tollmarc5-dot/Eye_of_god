@@ -21,7 +21,10 @@ test.describe('explorer', () => {
     await explorer(page).getByRole('button', { name: 'Clear scope' }).click()
     await expect(explorer(page)).toContainText('Whole graph')
     expect(await statsText(page)).toBe(whole)
-    expect(new URL(page.url()).search).toBe('')
+    // Only the camera may stay: the home framing centres the graph in the area the panels leave free.
+    const params = new URL(page.url()).searchParams
+    params.delete('cam')
+    expect(params.toString()).toBe('')
   })
 
   test('"show only" filters to one community; the row itself only selects it', async ({ page }) => {

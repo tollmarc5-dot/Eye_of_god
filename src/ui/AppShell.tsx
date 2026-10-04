@@ -10,11 +10,12 @@ import { InspectorPanel } from '@/features/inspector/InspectorPanel'
 import { GraphCommandsContext, type GraphCommands } from '@/features/world/graph-commands'
 import { GraphWorld } from '@/features/world/GraphWorld'
 import { WorldBackdrop } from '@/features/world/WorldBackdrop'
-import type { GraphRenderer } from '@/renderer'
+import type { GraphRenderer, ScreenRect } from '@/renderer'
 import { loadGraphSession } from '@/state/graph-session'
 import { useAppStore } from '@/state/store'
 import { startUrlSync } from '@/state/url-sync'
 import { PanelIcon } from './icons'
+import { measureHudZones, useHudOcclusion } from './occlusion'
 import { HudButton } from './primitives'
 import { COMPACT_QUERY, keepOneSheetOnPhones, MOBILE_QUERY } from './responsive'
 
@@ -26,6 +27,7 @@ export function AppShell() {
   const selectedNodeId = useAppStore((state) => state.selectedNodeId)
   const [attempt, setAttempt] = useState(0)
   const rendererRef = useRef<GraphRenderer | null>(null)
+  const hudRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -43,6 +45,13 @@ export function AppShell() {
   useEffect(() => useAppStore.subscribe(keepOneSheetOnPhones), [])
 
   useNavigationKeys()
+
+  // The HUD tells the renderer what it covers: labels avoid it, the camera frames around it.
+  const reportOcclusion = useCallback((rects: readonly ScreenRect[]) => {
+    rendererRef.current?.setOccludedRects(rects)
+  }, [])
+  useHudOcclusion(hudRef, reportOcclusion)
+  const measureOccluded = useCallback(() => (hudRef.current ? measureHudZones(hudRef.current) : []), [])
 
   // The address bar follows the store from the moment a graph is on screen.
   const isReady = data.status === 'ready'
@@ -80,10 +89,11 @@ export function AppShell() {
             graph={data.graph}
             positions={data.positions}
             rendererRef={rendererRef}
+            measureOccluded={measureOccluded}
           />
         )}
 
-        <div className="eog-hud">
+        <div className="eog-hud" ref={hudRef}>
           <TopBar />
           {data.status === 'ready' && (
             <>

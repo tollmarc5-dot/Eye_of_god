@@ -12,7 +12,8 @@
   --eog-orbit: rgba(79, 227, 255, 0.09);
 
   /* HUD surfaces: translucent, the world stays visible behind them */
-  --eog-surface: rgba(8, 15, 28, 0.7);
+  /* 0.9: text on a panel stays ≥ 4.5:1 even over the brightest node (tests/tokens-contrast.test.ts). */
+  --eog-surface: rgba(8, 15, 28, 0.9);
   --eog-surface-raised: rgba(16, 29, 51, 0.82);
   --eog-surface-solid: #0a1322;
   --eog-surface-hover: rgba(126, 170, 230, 0.08);
@@ -27,7 +28,7 @@
   /* Information */
   --eog-text: #e9f2ff;
   --eog-text-muted: #9db0cc;
-  --eog-text-faint: #7189a8;
+  --eog-text-faint: #8195b2;
 
   /* Status (always paired with a text label) */
   --eog-ok: #5df2c1;

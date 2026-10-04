@@ -29,6 +29,7 @@ import type { GraphRenderer, RendererEvents, RendererViewState } from '@/rendere
 import { COLLAPSED_MEMBER_SIZE, computeFocus, createReducers, EMPTY_VIEW_STATE } from '@/renderer/reducers'
 import { buildSearchIndex } from '@/search'
 import { useAppStore } from '@/state/store'
+import { DEFAULT_VIEW_STATE } from '@/state/url-state'
 import { CANVAS_THEME } from '@/styles/canvas-theme'
 
 const fake = vi.hoisted(() => ({
@@ -36,6 +37,7 @@ const fake = vi.hoisted(() => ({
   views: [] as RendererViewState[],
   focusNode: vi.fn((_nodeId: string) => true),
   frameNodes: vi.fn((_nodeIds: Iterable<string>) => true),
+  resetCamera: vi.fn(),
 }))
 
 // The real module pulls in Sigma, which needs WebGL just to be imported.
@@ -44,12 +46,14 @@ vi.mock('@/renderer', () => ({
     fake.events = events
     return {
       setViewState: (view) => void fake.views.push(view),
+      setOccludedRects: vi.fn(),
+      setOcclusionSource: vi.fn(),
       focusNode: fake.focusNode,
       frameNeighborhood: vi.fn(() => true),
       frameNodes: fake.frameNodes,
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
-      resetCamera: vi.fn(),
+      resetCamera: fake.resetCamera,
       getCamera: () => ({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }),
       setCamera: vi.fn(),
       getNodeViewportPosition: () => null,
@@ -472,6 +476,7 @@ describe('communities in the interface', () => {
     window.matchMedia = vi.fn().mockReturnValue({ matches: false })
     fake.views.length = 0
     fake.frameNodes.mockClear()
+    fake.resetCamera.mockClear()
     commands = {
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
@@ -485,6 +490,33 @@ describe('communities in the interface', () => {
   })
 
   afterEach(cleanup)
+
+  test('entering the community view frames every aggregate; leaving it does not move the camera', () => {
+    fireEvent.click(explorer().getByRole('switch', { name: /Community view/ }))
+    expect(fake.resetCamera).toHaveBeenCalledOnce()
+
+    fireEvent.click(explorer().getByRole('switch', { name: /Community view/ }))
+    expect(fake.resetCamera).toHaveBeenCalledOnce()
+  })
+
+  test('a link that restores the community view with its own camera keeps that camera', () => {
+    act(() =>
+      store().restoreView({
+        ...DEFAULT_VIEW_STATE,
+        aggregation: { mode: 'communities', exceptions: [] },
+        camera: { x: 0.2, y: 0.3, ratio: 0.5 },
+      }),
+    )
+
+    expect(store().aggregation.mode).toBe('communities')
+    expect(fake.resetCamera).not.toHaveBeenCalled()
+  })
+
+  test('a link that restores the community view without a camera is framed', () => {
+    act(() => store().restoreView({ ...DEFAULT_VIEW_STATE, aggregation: { mode: 'communities', exceptions: [] } }))
+
+    expect(fake.resetCamera).toHaveBeenCalledOnce()
+  })
 
   test('the explorer lists the drawn communities with their real names and counts', () => {
     expect(explorer().getByRole('button', { name: /^Core API\s*3/ })).toBeDefined()

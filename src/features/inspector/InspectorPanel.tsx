@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useGraphCommands } from '@/features/world/graph-commands'
 import { analyzeNode, EXPANSION_DEPTHS, type GraphIndex, type KnowledgeGraph } from '@/graph'
 import { useExpansion, usePathView, useSelectedCommunity, useVisibility } from '@/state/selectors'
@@ -9,7 +9,7 @@ import { EmptyState, formatCount, HudButton, Panel } from '@/ui/primitives'
 import { CommunityInspector } from './CommunityInspector'
 import { NodeRelations } from './NodeRelations'
 import { PathPanel } from './PathPanel'
-import { NodeSummary } from './NodeSummary'
+import { NodeIdentity, NodeSummary } from './NodeSummary'
 
 interface InspectorPanelProps {
   readonly model: GraphModel
@@ -64,11 +64,18 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
   }, [analysis, visibleNodeIds])
   const hasDrawnNeighbors = analysis !== null && analysis.neighborCount > hiddenNeighborCount
 
+  // A new node or community starts at the top: its identity first, never mid-list.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0
+  }, [selectedNodeId, selectedCommunityId])
+
   return (
     <Panel
       title="Node inspector"
       className="eog-inspector"
       isOpen={isOpen}
+      bodyRef={bodyRef}
       actions={
         <HudButton
           label="Collapse inspector"
@@ -130,6 +137,7 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
       {node && analysis && (
         <>
           {/* Keyed by id: each selection replays the enter transition and resets list controls. */}
+          <NodeIdentity key={`identity-${node.id}`} node={node} />
           <NodeSummary
             key={`summary-${node.id}`}
             node={node}

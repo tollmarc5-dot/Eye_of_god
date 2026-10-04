@@ -47,7 +47,7 @@ cambia uno, hay que cambiar el otro.
 | Grupo | Tokens | Uso |
 |---|---|---|
 | Mundo | `--eog-bg`, `--eog-bg-deep`, `--eog-bg-glow`, `--eog-grid`, `--eog-orbit` | Fondo, rejilla, órbitas |
-| Superficies | `--eog-surface`, `--eog-surface-raised`, `--eog-surface-solid`, `--eog-surface-hover` | Paneles translúcidos |
+| Superficies | `--eog-surface`, `--eog-surface-raised`, `--eog-surface-solid`, `--eog-surface-hover` | Paneles translúcidos (`--eog-surface` al 90 %: el texto se lee sobre cualquier cosa que haya debajo) |
 | Interacción | `--eog-cyan`, `--eog-cyan-soft`, `--eog-cyan-line`, `--eog-blue` | Estados activos y foco |
 | Texto | `--eog-text`, `--eog-text-muted`, `--eog-text-faint` | Tres niveles de jerarquía |
 | Estado | `--eog-ok`, `--eog-warn`, `--eog-danger` | Siempre junto a un texto |
@@ -158,7 +158,14 @@ Definidos en `src/renderer/zoom-level.ts`.
 - Ningún estado depende solo del color: hay texto, posición o marca.
 - Los paneles cerrados quedan fuera del orden de tabulación.
 - La selección se anuncia en una región `role="status"`.
-- Texto principal y secundario superan 4,5:1 sobre el fondo.
+- Los tres niveles de texto (`--eog-text`, `--eog-text-muted`,
+  `--eog-text-faint`) superan 4,5:1 sobre el fondo y sobre un panel puesto
+  encima de blanco puro, el peor caso; `tests/tokens-contrast.test.ts` lo
+  comprueba leyendo `tokens.css`.
+- Ninguna etiqueta del grafo se dibuja bajo el HUD, y el nodo seleccionado y su
+  placa quedan siempre en el área libre.
+- En el Inspector, el tipo y el nombre del nodo quedan fijos arriba al hacer
+  scroll.
 
 ## Reglas para mantener la estética
 

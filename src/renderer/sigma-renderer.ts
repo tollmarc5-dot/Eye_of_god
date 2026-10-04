@@ -5,6 +5,16 @@ import { CANVAS_THEME } from '@/styles/canvas-theme'
 import { hexToUnitRgb } from '@/utils/color'
 import { createLabelLayer, drawNodeHover } from './draw-labels'
 import {
+  freeCentre,
+  freeInsets,
+  isInFreeArea,
+  isUnderRects,
+  NO_INSETS,
+  sameRects,
+  type FreeInsets,
+  type ScreenRect,
+} from './free-area'
+import {
   createFrameMonitor,
   createMotionUniforms,
   initialQuality,
@@ -46,8 +56,6 @@ export interface RendererEvents {
 export interface RendererOptions {
   /** Camera transition length in ms; 0 for users who prefer reduced motion. */
   readonly cameraDuration?: number
-  /** Width in CSS pixels that HUD panels cover on each side, asked when framing. */
-  readonly getSideInset?: () => number
   /** True for users who prefer reduced motion: no continuous animation at all. */
   readonly reducedMotion?: boolean
 }
@@ -55,6 +63,18 @@ export interface RendererOptions {
 /** The app talks to this interface only, never to Sigma directly. */
 export interface GraphRenderer {
   setViewState(state: RendererViewState): void
+  /**
+   * Rectangles of the viewport the HUD covers, in CSS pixels of the graph's
+   * container. Labels stay out of them and every framing centres the camera in
+   * what is left; a selected node they would hide is brought back into view.
+   */
+  setOccludedRects(rects: readonly ScreenRect[]): void
+  /**
+   * Where to read what the HUD covers at the very moment a framing starts, so
+   * a panel that changed in the same update (the inspector filling up on a
+   * selection) is already taken into account. Reads it once right away.
+   */
+  setOcclusionSource(read: () => readonly ScreenRect[]): void
   /** Centres the camera on a node. Returns false when the node is not drawn. */
   focusNode(nodeId: string): boolean
   /**
@@ -81,10 +101,19 @@ const DEFAULT_CAMERA_DURATION = 250
 const FOCUS_RATIO = 0.2
 // Travelling to a node is a longer move than a zoom step, so it gets more time.
 const FOCUS_DURATION_FACTOR = 1.8
-// Keeps the graph clear of the HUD at the edges of the viewport.
-// Free space kept around a framed neighbourhood: top bar above, dock below.
+// Free space kept around a framed set of nodes. Without HUD rectangles the
+// vertical margin also stands in for the top bar and the dock.
 const FRAME_MARGIN_X = 48
 const FRAME_MARGIN_Y = 120
+// With the HUD known, the free area already excludes it: a small margin is enough.
+const FRAME_MARGIN_IN_FREE_AREA = 32
+// A selected node closer than this to the edge of the free area counts as hidden.
+const SELECTED_NODE_MARGIN = 24
+/** Room kept between the end of the selected node's plate and the HUD. */
+const PLATE_END_MARGIN = 8
+// While the camera travels, the check for the selected node waits and retries.
+const VISIBILITY_RETRY_MS = 120
+const VISIBILITY_MAX_RETRIES = 25
 // Never zoom in further than this on a tight set of nodes: no extreme close-ups.
 const MIN_FRAME_RATIO = 0.12
 const STAGE_PADDING = 72
@@ -120,23 +149,27 @@ function visibleBoundingBox(graph: KnowledgeGraph, view: RendererViewState): Bou
 }
 
 /**
- * Camera ratio at which a graph of the given extent stays clear of `sideInset`
- * pixels on both sides. 1 (Sigma's own fit) whenever it already does.
+ * Camera ratio at which a graph of the given extent fits the free area the
+ * HUD leaves (`insets`). 1 (Sigma's own fit) whenever it already does.
  */
 export function framingRatio(
   box: BoundingBox | null,
   width: number,
   height: number,
-  sideInset: number,
+  insets: FreeInsets,
 ): number {
-  const freeWidth = width - 2 * sideInset
+  const freeWidth = width - insets.left - insets.right
+  const freeHeight = height - insets.top - insets.bottom
   const fitWidth = width - 2 * STAGE_PADDING
   const fitHeight = height - 2 * STAGE_PADDING
-  if (!box || !(sideInset > 0) || !(freeWidth > 0) || !(fitWidth > 0) || !(fitHeight > 0)) return 1
+  if (!box || !(freeWidth > 0) || !(freeHeight > 0) || !(fitWidth > 0) || !(fitHeight > 0)) return 1
+  const boxWidth = box.x[1] - box.x[0]
   const boxHeight = box.y[1] - box.y[0]
-  const aspect = boxHeight > 0 ? (box.x[1] - box.x[0]) / boxHeight : Infinity
+  const aspect = boxHeight > 0 ? boxWidth / boxHeight : Infinity
+  // Size of the graph on screen at ratio 1, as Sigma fits it into the padded viewport.
   const drawnWidth = Math.min(fitWidth, fitHeight * aspect)
-  return Math.max(1, drawnWidth / freeWidth)
+  const drawnHeight = aspect > 0 ? Math.min(fitHeight, fitWidth / aspect) : fitHeight
+  return Math.max(1, drawnWidth / freeWidth, drawnHeight / freeHeight)
 }
 
 function countVisibleEdges(graph: KnowledgeGraph, view: RendererViewState): number {
@@ -165,6 +198,12 @@ export function createSigmaRenderer(
   let hoveredNodeId: string | null = null
   let focus: FocusState = NO_FOCUS
   let visibleBox: BoundingBox | null = null
+  let occluded: readonly ScreenRect[] = []
+  let visibilityTimer: ReturnType<typeof setTimeout> | null = null
+  let readOccluded: (() => readonly ScreenRect[]) | null = null
+  // A camera restored from a link stays exactly where it was shared until the
+  // user acts: the HUD settling while the page loads must not move it.
+  let isCameraHeld = false
 
   // Shared with the WebGL programs: the render loop writes, the shaders read.
   let level: ZoomLevel = 'universe'
@@ -218,7 +257,7 @@ export function createSigmaRenderer(
   let hasRendered = false
   sigma.on('beforeRender', labels.reset)
   sigma.on('afterRender', () => {
-    labels.draw()
+    labels.draw({ reserved: occluded, width: container.clientWidth, height: container.clientHeight })
     if (hasRendered) return
     hasRendered = true
     events.onFirstRender?.()
@@ -233,6 +272,11 @@ export function createSigmaRenderer(
     setHovered(null)
   }
   container.addEventListener('mouseleave', clearStaleHover)
+  const releaseCamera = (): void => {
+    isCameraHeld = false
+  }
+  container.addEventListener('pointerdown', releaseCamera)
+  container.addEventListener('wheel', releaseCamera, { passive: true })
 
   // The living graph: one cheap redraw per frame. Positions drift inside the
   // shaders, so nothing is recomputed, re-indexed or sent to React here.
@@ -273,12 +317,92 @@ export function createSigmaRenderer(
     }, VIEW_CHANGE_THROTTLE_MS)
   })
 
+  const currentInsets = (): FreeInsets =>
+    occluded.length === 0 ? NO_INSETS : freeInsets(container.clientWidth, container.clientHeight, occluded)
+
+  /**
+   * The camera that puts `target` (framed-graph coordinates, at `target.ratio`)
+   * in the centre of the free area instead of the centre of the viewport.
+   * Viewport and framed graph are related by a translation at a given ratio,
+   * so if Q is what lands on the free centre with the camera on P, the camera
+   * on 2P - Q lands P there.
+   */
+  const inFreeCentre = (target: { x: number; y: number; ratio: number }): { x: number; y: number; ratio: number } => {
+    // Nothing covers the graph: the free centre is the centre of the viewport.
+    if (occluded.length === 0) return target
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const centre = freeCentre(width, height, currentInsets())
+    if (Math.abs(centre.x - width / 2) < 1 && Math.abs(centre.y - height / 2) < 1) return target
+    const landing = sigma.viewportToFramedGraph(centre, {
+      cameraState: { x: target.x, y: target.y, ratio: target.ratio, angle: 0 },
+    })
+    return { x: 2 * target.x - landing.x, y: 2 * target.y - landing.y, ratio: target.ratio }
+  }
+
+  /** Brings the selected node back into the free area when the HUD has just covered it. */
+  const keepSelectedVisible = (attempt = 0): void => {
+    visibilityTimer = null
+    const nodeId = view.selectedNodeId
+    if (isCameraHeld || nodeId === null || !graph.hasNode(nodeId) || isNodeHidden(view, nodeId)) return
+    // A camera already on its way somewhere decides first; look again once it lands.
+    if (camera.isAnimated()) {
+      if (attempt < VISIBILITY_MAX_RETRIES) {
+        visibilityTimer = setTimeout(() => keepSelectedVisible(attempt + 1), VISIBILITY_RETRY_MS)
+      }
+      return
+    }
+    const display = sigma.getNodeDisplayData(nodeId)
+    if (!display) return
+    const onScreen = sigma.framedGraphToViewport(display)
+    const insets = currentInsets()
+    const isClear = (point: { x: number; y: number }, margin: number): boolean =>
+      isInFreeArea(point, container.clientWidth, container.clientHeight, insets, margin) &&
+      !isUnderRects(point, occluded, margin)
+    // The node and the end of its plate: a name cut by a panel is not visible either.
+    const reach = labels.plateReach({ size: sigma.scaleSize(display.size), label: display.label })
+    const plateEnd = { x: onScreen.x + reach, y: onScreen.y }
+    if (isClear(onScreen, SELECTED_NODE_MARGIN) && (reach === 0 || isClear(plateEnd, PLATE_END_MARGIN))) return
+    // Centre the node and its plate together.
+    const anchor =
+      reach === 0
+        ? display
+        : sigma.viewportToFramedGraph({ x: onScreen.x + reach / 2, y: onScreen.y })
+    void camera.animate(inFreeCentre({ x: anchor.x, y: anchor.y, ratio: camera.getState().ratio }), {
+      duration,
+      easing: 'cubicInOut',
+    })
+  }
+
+  const applyOccluded = (rects: readonly ScreenRect[]): boolean => {
+    if (sameRects(rects, occluded)) return false
+    occluded = rects
+    sigma.scheduleRender()
+    return true
+  }
+
+  /** Every framing starts here: the user asked for a move, and the HUD is read as it is now. */
+  const beforeFraming = (): void => {
+    releaseCamera()
+    if (readOccluded) applyOccluded(readOccluded())
+  }
+
   return {
+    setOccludedRects(rects) {
+      if (!applyOccluded(rects)) return
+      if (visibilityTimer !== null) clearTimeout(visibilityTimer)
+      keepSelectedVisible()
+    },
+    setOcclusionSource(read) {
+      readOccluded = read
+      applyOccluded(read())
+    },
     setViewState(state) {
       const visibilityChanged =
         state.visibleNodeIds !== view.visibleNodeIds || state.showEdges !== view.showEdges
       // Collapsing or expanding moves nodes on screen: Sigma has to re-index them.
       const aggregatesChanged = state.aggregates !== view.aggregates
+      if (state.selectedNodeId !== view.selectedNodeId) releaseCamera()
       view = state
       focus = computeFocus(graph, view, hoveredNodeId)
       if (!visibilityChanged) {
@@ -294,10 +418,11 @@ export function createSigmaRenderer(
       if (isNodeHidden(view, nodeId)) return false
       const display = sigma.getNodeDisplayData(nodeId)
       if (!display) return false
-      void camera.animate(
-        { x: display.x, y: display.y, ratio: FOCUS_RATIO },
-        { duration: duration * FOCUS_DURATION_FACTOR, easing: 'cubicInOut' },
-      )
+      beforeFraming()
+      void camera.animate(inFreeCentre({ x: display.x, y: display.y, ratio: FOCUS_RATIO }), {
+        duration: duration * FOCUS_DURATION_FACTOR,
+        easing: 'cubicInOut',
+      })
       return true
     },
     frameNeighborhood(nodeId) {
@@ -321,45 +446,48 @@ export function createSigmaRenderer(
         if (display.y > maxY) maxY = display.y
       }
       if (firstId === null) return false
+      beforeFraming()
       // How large the set is on screen now tells how far to zoom.
       const from = sigma.framedGraphToViewport({ x: minX, y: minY })
       const to = sigma.framedGraphToViewport({ x: maxX, y: maxY })
-      const freeWidth =
-        container.clientWidth - 2 * (options.getSideInset?.() ?? 0) - 2 * FRAME_MARGIN_X
-      const freeHeight = container.clientHeight - 2 * FRAME_MARGIN_Y
+      const insets = currentInsets()
+      const marginX = occluded.length > 0 ? FRAME_MARGIN_IN_FREE_AREA : FRAME_MARGIN_X
+      const marginY = occluded.length > 0 ? FRAME_MARGIN_IN_FREE_AREA : FRAME_MARGIN_Y
+      const freeWidth = container.clientWidth - insets.left - insets.right - 2 * marginX
+      const freeHeight = container.clientHeight - insets.top - insets.bottom - 2 * marginY
       const scale = Math.max(Math.abs(to.x - from.x) / freeWidth, Math.abs(to.y - from.y) / freeHeight)
       if (!(scale > 0) || !Number.isFinite(scale)) return this.focusNode(firstId)
-      void camera.animate(
-        {
-          x: (minX + maxX) / 2,
-          y: (minY + maxY) / 2,
-          ratio: Math.max(MIN_FRAME_RATIO, camera.getState().ratio * scale),
-        },
-        { duration: duration * FOCUS_DURATION_FACTOR, easing: 'cubicInOut' },
-      )
+      const target = inFreeCentre({
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        ratio: Math.max(MIN_FRAME_RATIO, camera.getState().ratio * scale),
+      })
+      void camera.animate(target, { duration: duration * FOCUS_DURATION_FACTOR, easing: 'cubicInOut' })
       return true
     },
     zoomIn() {
+      releaseCamera()
       void camera.animatedZoom({ duration })
     },
     zoomOut() {
+      releaseCamera()
       void camera.animatedUnzoom({ duration })
     },
     resetCamera() {
-      const ratio = framingRatio(
-        visibleBox,
-        container.clientWidth,
-        container.clientHeight,
-        options.getSideInset?.() ?? 0,
-      )
-      if (ratio === 1) void camera.animatedReset({ duration })
-      else void camera.animate({ x: 0.5, y: 0.5, angle: 0, ratio }, { duration })
+      beforeFraming()
+      const ratio = framingRatio(visibleBox, container.clientWidth, container.clientHeight, currentInsets())
+      const target = inFreeCentre({ x: 0.5, y: 0.5, ratio })
+      if (target.ratio === 1 && target.x === 0.5 && target.y === 0.5) void camera.animatedReset({ duration })
+      else void camera.animate({ ...target, angle: 0 }, { duration })
     },
     getCamera() {
       const { x, y, ratio, angle } = camera.getState()
       return { x, y, ratio, angle }
     },
     setCamera({ x, y, ratio }) {
+      isCameraHeld = true
+      if (visibilityTimer !== null) clearTimeout(visibilityTimer)
+      visibilityTimer = null
       // animate() with no duration is the one call that also cancels a transition in flight.
       void camera.animate({ x, y, ratio, angle: 0 }, { duration: 0 })
     },
@@ -374,7 +502,10 @@ export function createSigmaRenderer(
     destroy() {
       if (frame !== null) cancelAnimationFrame(frame)
       if (viewTimer !== null) clearTimeout(viewTimer)
+      if (visibilityTimer !== null) clearTimeout(visibilityTimer)
       container.removeEventListener('mouseleave', clearStaleHover)
+      container.removeEventListener('pointerdown', releaseCamera)
+      container.removeEventListener('wheel', releaseCamera)
       // A camera transition still running would keep asking the dead instance to
       // render: a disabled camera ignores it.
       camera.disable()

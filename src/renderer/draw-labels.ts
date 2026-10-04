@@ -5,6 +5,7 @@ import {
   LABEL_RANK,
   PLATE_PADDING_X,
   plateBox,
+  type LabelBounds,
   type LabelCandidate,
   type LabelRank,
 } from './label-layout'
@@ -87,8 +88,13 @@ export interface LabelLayer {
   collect(context: CanvasRenderingContext2D, data: LabelData, settings: LabelSettings): void
   /** Before each Sigma render: a new frame starts with no candidate. */
   reset(): void
-  /** After Sigma has handed over every candidate of the frame: places and draws them. */
-  draw(): void
+  /**
+   * After Sigma has handed over every candidate of the frame: places and draws
+   * them, inside `bounds` (the viewport minus the HUD) when given.
+   */
+  draw(bounds?: LabelBounds): void
+  /** How far a selected node's plate reaches right of the node centre, in pixels; 0 before the first frame. */
+  plateReach(data: Pick<LabelData, 'size' | 'label'>): number
 }
 
 /**
@@ -121,7 +127,7 @@ export function createLabelLayer(): LabelLayer {
     reset() {
       candidates = []
     },
-    draw() {
+    draw(bounds) {
       if (!target || candidates.length === 0) return
       const { context, settings } = target
       setFont(context, settings)
@@ -138,9 +144,19 @@ export function createLabelLayer(): LabelLayer {
         }
         return width
       }
-      for (const { candidate, textX } of place(candidates, { labelSize: settings.labelSize, measure })) {
+      for (const { candidate, textX } of place(candidates, { labelSize: settings.labelSize, measure }, bounds)) {
         drawLabelText(context, candidate.label, textX, candidate.y)
       }
+    },
+    plateReach(data) {
+      if (!target || !data.label) return 0
+      setFont(target.context, target.settings)
+      const box = plateBox(
+        { key: '', label: data.label, x: 0, y: 0, size: data.size, rank: LABEL_RANK.selected },
+        target.context.measureText(data.label).width,
+        target.settings.labelSize,
+      )
+      return box.right
     },
   }
 }

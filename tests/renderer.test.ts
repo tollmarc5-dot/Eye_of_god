@@ -28,6 +28,7 @@ const fake = vi.hoisted(() => {
       animatedUnzoom: vi.fn(() => Promise.resolve()),
       animatedReset: vi.fn(() => Promise.resolve()),
       getState: vi.fn(() => ({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })),
+      isAnimated: vi.fn(() => false),
       disable: vi.fn(),
     }
     hoveredNode: string | null = null
@@ -39,6 +40,17 @@ const fake = vi.hoisted(() => {
     getNodeDisplayData = vi.fn((id: string) => (id === 'missing' ? undefined : { x: 0.3, y: 0.7 }))
     graphToViewport = vi.fn(() => ({ x: 120, y: 80 }))
     framedGraphToViewport = vi.fn(({ x, y }: { x: number; y: number }) => ({ x: x * 1000, y: y * 1000 }))
+    scaleSize = vi.fn((size = 1) => size)
+    // A 1000 × 800 viewport where 1000 px are one framed-graph unit at ratio 1.
+    viewportToFramedGraph = vi.fn(
+      (point: { x: number; y: number }, override: { cameraState?: { x: number; y: number; ratio: number } } = {}) => {
+        const camera = override.cameraState ?? { x: 0.5, y: 0.5, ratio: 1 }
+        return {
+          x: camera.x + ((point.x - 500) / 1000) * camera.ratio,
+          y: camera.y + ((point.y - 400) / 1000) * camera.ratio,
+        }
+      },
+    )
 
     constructor(
       public graph: unknown,
@@ -450,14 +462,203 @@ describe('framingRatio', () => {
   const wide = { x: [0, 400], y: [0, 100] } as { x: [number, number]; y: [number, number] }
   const tall = { x: [0, 100], y: [0, 400] } as { x: [number, number]; y: [number, number] }
 
+  const sides = (width: number) => ({ left: width, right: width, top: 0, bottom: 0 })
+
   test('zooms out just enough for a wide scope to clear the side panels', () => {
     // Drawn 1296px wide at ratio 1; only 800px are free between the panels.
-    expect(framingRatio(wide, 1440, 900, 320)).toBeCloseTo(1296 / 800)
+    expect(framingRatio(wide, 1440, 900, sides(320))).toBeCloseTo(1296 / 800)
   })
 
   test('leaves Sigma\'s own fit alone when the graph already clears the panels', () => {
-    expect(framingRatio(tall, 1440, 900, 320)).toBe(1)
-    expect(framingRatio(wide, 1440, 900, 0)).toBe(1)
-    expect(framingRatio(null, 1440, 900, 320)).toBe(1)
+    expect(framingRatio(tall, 1440, 900, sides(320))).toBe(1)
+    expect(framingRatio(wide, 1440, 900, sides(0))).toBe(1)
+    expect(framingRatio(null, 1440, 900, sides(320))).toBe(1)
+  })
+
+  test('accounts for uneven sides and for what covers the top and the bottom', () => {
+    // 1296 px wide, 324 px tall at ratio 1. A bottom sheet leaves 200 px of height.
+    expect(framingRatio(wide, 1440, 900, { left: 0, right: 0, top: 100, bottom: 600 })).toBeCloseTo(324 / 200)
+    // An explorer on the left only: 1296 / (1440 - 400).
+    expect(framingRatio(wide, 1440, 900, { left: 400, right: 0, top: 0, bottom: 0 })).toBeCloseTo(1296 / 1040)
+  })
+})
+
+describe('HUD occlusion', () => {
+  // A full-height panel on the left of a 1000 × 800 viewport: the free area is x 300–1000.
+  const leftPanel = { left: 0, top: 0, right: 300, bottom: 800 }
+
+  function sized() {
+    const parts = setup()
+    Object.assign(parts.container, { clientWidth: 1000, clientHeight: 800 })
+    return parts
+  }
+
+  test('focus puts the node in the centre of the free area, not of the viewport', () => {
+    const { renderer, sigma } = sized()
+    renderer.setOccludedRects([leftPanel])
+
+    renderer.focusNode('os')
+
+    // Free centre x = 650, 150 px right of the viewport centre: at ratio 0.2 that is
+    // 0.03 framed units, so the camera sits 0.03 left of the node (0.3).
+    const [target] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number; y: number; ratio: number }]
+    expect(target.x).toBeCloseTo(0.27)
+    expect(target.y).toBeCloseTo(0.7)
+    expect(target.ratio).toBeCloseTo(0.2)
+  })
+
+  test('without HUD rectangles the camera targets are exactly as before', () => {
+    const { renderer, sigma } = sized()
+
+    renderer.focusNode('os')
+
+    expect(sigma.camera.animate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ x: 0.3, y: 0.7, ratio: 0.2 }),
+      expect.anything(),
+    )
+    expect(sigma.viewportToFramedGraph).not.toHaveBeenCalled()
+  })
+
+  test('reset frames the drawn graph in the free area', () => {
+    const { renderer, sigma } = sized()
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, visibleNodeIds: new Set(['app_index', 'app_index_main', 'os']) })
+    renderer.setOccludedRects([leftPanel])
+
+    renderer.resetCamera()
+
+    expect(sigma.camera.animatedReset).not.toHaveBeenCalled()
+    const [target] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number; ratio: number }]
+    // Shifted so the graph's centre lands at x 650, and zoomed out to fit 700 px instead of 1000.
+    expect(target.x).toBeLessThan(0.5)
+    expect(target.ratio).toBeGreaterThan(1)
+  })
+
+  test('a selected node the HUD has just covered is brought back into the free area', () => {
+    const { renderer, sigma } = sized()
+    // 'os' is drawn at (300, 700): right at the edge of the panel.
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+    renderer.setOccludedRects([leftPanel])
+
+    expect(sigma.camera.animate).toHaveBeenCalledOnce()
+    const [target] = sigma.camera.animate.mock.calls[0] as unknown as [{ x: number; ratio: number }]
+    expect(target.ratio).toBe(1)
+    expect(target.x).toBeCloseTo(0.3 - 0.15)
+  })
+
+  test('a selected node whose name runs under a panel is moved, node and plate together', () => {
+    const { renderer, sigma } = sized()
+    // One frame drawn, so the label layer knows its font.
+    const labelContext = {
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      strokeText: vi.fn(),
+      fillText: vi.fn(),
+    } as unknown as CanvasRenderingContext2D
+    const drawLabel = sigma.settings.defaultDrawNodeLabel as (c: CanvasRenderingContext2D, d: object, s: object) => void
+    sigma.emit('beforeRender')
+    drawLabel(labelContext, { key: 'x', label: 'x', x: 10, y: 10, size: 4 }, { labelSize: 12, labelFont: 'sans-serif', labelWeight: '500' })
+    sigma.emit('afterRender')
+    // The node at x 700 is clear of a panel from x 800, but its 254 px plate is not.
+    sigma.getNodeDisplayData.mockImplementation(() => ({ x: 0.7, y: 0.4, size: 4, label: 'a selected node with a long name' }))
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+    renderer.setOccludedRects([{ left: 800, top: 0, right: 1000, bottom: 800 }])
+
+    expect(sigma.camera.animate).toHaveBeenCalledOnce()
+    // The middle of node and plate (x 827 on screen) goes to the free centre (x 400).
+    const [target] = sigma.camera.animate.mock.calls[0] as unknown as [{ x: number }]
+    expect(target.x).toBeCloseTo(0.827 + 0.1)
+  })
+
+  test('a selected node that stays visible does not move the camera', () => {
+    const { renderer, sigma } = sized()
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+    renderer.setOccludedRects([{ left: 800, top: 0, right: 1000, bottom: 800 }])
+
+    expect(sigma.camera.animate).not.toHaveBeenCalled()
+  })
+
+  test('while the camera travels the check waits, then runs once it has landed', () => {
+    vi.useFakeTimers()
+    const { renderer, sigma } = sized()
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+    sigma.camera.isAnimated.mockReturnValue(true)
+
+    renderer.setOccludedRects([leftPanel])
+    expect(sigma.camera.animate).not.toHaveBeenCalled()
+
+    sigma.camera.isAnimated.mockReturnValue(false)
+    vi.advanceTimersByTime(200)
+    vi.useRealTimers()
+    expect(sigma.camera.animate).toHaveBeenCalledOnce()
+  })
+
+  test('a framing reads the HUD as it is at that moment, before any report arrives', () => {
+    const { renderer, sigma } = sized()
+    let hud: { left: number; top: number; right: number; bottom: number }[] = []
+    renderer.setOcclusionSource(() => hud)
+    // The panel appears in the same update as the request: no report yet.
+    hud = [leftPanel]
+
+    renderer.focusNode('os')
+
+    const [target] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number }]
+    expect(target.x).toBeCloseTo(0.27)
+  })
+
+  test('a camera restored from a link is not moved while the HUD settles', () => {
+    const { renderer, sigma, listeners } = sized()
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+
+    renderer.setCamera({ x: 0.4, y: 0.6, ratio: 0.5 })
+    renderer.setOccludedRects([leftPanel])
+    expect(sigma.camera.animate).toHaveBeenCalledOnce() // the restore itself
+
+    // Once the user acts on the graph, the HUD keeps the selection in view again.
+    listeners.get('pointerdown')?.()
+    renderer.setOccludedRects([{ ...leftPanel, right: 320 }])
+    expect(sigma.camera.animate).toHaveBeenCalledTimes(2)
+  })
+
+  test('a new selection after a restored camera is kept in view again', () => {
+    const { renderer, sigma } = sized()
+    renderer.setCamera({ x: 0.4, y: 0.6, ratio: 0.5 })
+
+    renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
+    renderer.setOccludedRects([leftPanel])
+
+    expect(sigma.camera.animate).toHaveBeenCalledTimes(2)
+  })
+
+  test('the same rectangles twice change nothing; new ones redraw the labels', () => {
+    const { renderer, sigma } = sized()
+
+    renderer.setOccludedRects([leftPanel])
+    renderer.setOccludedRects([{ ...leftPanel }])
+    expect(sigma.scheduleRender).toHaveBeenCalledTimes(1)
+
+    renderer.setOccludedRects([])
+    expect(sigma.scheduleRender).toHaveBeenCalledTimes(2)
+  })
+
+  test('labels are kept out of the HUD the renderer was told about', () => {
+    const { renderer, sigma } = sized()
+    renderer.setOccludedRects([leftPanel])
+    const fillText = vi.fn()
+    const labelContext = {
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      strokeText: vi.fn(),
+      fillText,
+    } as unknown as CanvasRenderingContext2D
+    const drawLabel = sigma.settings.defaultDrawNodeLabel as (c: CanvasRenderingContext2D, d: object, s: object) => void
+    const settings = { labelSize: 12, labelFont: 'sans-serif', labelWeight: '500' }
+
+    sigma.emit('beforeRender')
+    drawLabel(labelContext, { key: 'hidden', label: 'under the panel', x: 120, y: 300, size: 4 }, settings)
+    drawLabel(labelContext, { key: 'free', label: 'in the free area', x: 600, y: 300, size: 4 }, settings)
+    sigma.emit('afterRender')
+
+    expect(fillText.mock.calls.map(([text]) => text)).toEqual(['in the free area'])
   })
 })

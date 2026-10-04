@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 import { ChevronIcon } from './icons'
 
 /** Arrow keys walk the buttons of a list; Tab still leaves it as usual. */
@@ -17,11 +17,13 @@ interface PanelProps {
   readonly isOpen: boolean
   /** Buttons shown at the right of the header (close, collapse…). */
   readonly actions?: ReactNode
+  /** The scrolling body, for panels that need to move its scroll position. */
+  readonly bodyRef?: Ref<HTMLDivElement>
   readonly children: ReactNode
 }
 
 /** Floating HUD surface. When closed it is hidden AND removed from the tab order. */
-export function Panel({ title, className, isOpen, actions, children }: PanelProps) {
+export function Panel({ title, className, isOpen, actions, bodyRef, children }: PanelProps) {
   const titleId = useId()
   return (
     <section
@@ -36,7 +38,9 @@ export function Panel({ title, className, isOpen, actions, children }: PanelProp
         </h2>
         {actions}
       </header>
-      <div className="eog-panel__body">{children}</div>
+      <div className="eog-panel__body" ref={bodyRef}>
+        {children}
+      </div>
     </section>
   )
 }

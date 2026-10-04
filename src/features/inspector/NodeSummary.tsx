@@ -37,18 +37,29 @@ interface NodeSummaryProps {
   readonly onOpenCommunity: (communityId: number) => void
 }
 
-/** Identity, location and graph metrics. Every value comes from the internal model. */
-export function NodeSummary({ node, community, analysis, hiddenNeighborCount, onOpenCommunity }: NodeSummaryProps) {
-  // The folder inside the project: the project name itself is shown on its own line.
-  const folderInProject = node.project === null ? node.folder : node.folder.split('/').slice(1).join('/')
+/**
+ * What the inspected node is: kind and name. It stays pinned to the top of the
+ * inspector while the rest scrolls, so the selection is never anonymous.
+ */
+export function NodeIdentity({ node }: { readonly node: InternalNode }) {
   return (
-    <div className="eog-node">
+    <div className="eog-node-identity">
       <div className="eog-node__tags">
         <span className="eog-tag eog-tag--accent">{node.kind}</span>
         {node.isCallable && <span className="eog-tag">Callable</span>}
         {node.isExternal && <span className="eog-tag">External</span>}
       </div>
       <p className="eog-node__name">{node.label}</p>
+    </div>
+  )
+}
+
+/** Location and graph metrics. Every value comes from the internal model. */
+export function NodeSummary({ node, community, analysis, hiddenNeighborCount, onOpenCommunity }: NodeSummaryProps) {
+  // The folder inside the project: the project name itself is shown on its own line.
+  const folderInProject = node.project === null ? node.folder : node.folder.split('/').slice(1).join('/')
+  return (
+    <div className="eog-node">
       {/* Graph text is untrusted: rendered as text only. */}
       {node.rationale && <p className="eog-node__note">{node.rationale}</p>}
 

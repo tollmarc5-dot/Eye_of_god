@@ -6,6 +6,7 @@
  * bounds); this module only arbitrates between them. It is pure and
  * deterministic: the same candidates give the same picture, in any order.
  */
+import { sameRects } from './free-area'
 
 /** Lower ranks are placed first and win every conflict. */
 export const LABEL_RANK = {
@@ -156,18 +157,42 @@ class Occupancy {
   }
 }
 
+/** Where labels may go: the viewport, minus what the HUD covers. */
+export interface LabelBounds {
+  /** Rectangles covered by the HUD. No label is ever drawn into one. */
+  readonly reserved: readonly LabelBox[]
+  /** Viewport size; a label must fit inside it entirely. Omitted: no edge check. */
+  readonly width?: number
+  readonly height?: number
+}
+
+export const NO_BOUNDS: LabelBounds = { reserved: [] }
+
 /**
  * Greedy placement in priority order:
  * - plates (selected, hovered) are never moved or dropped; they only reserve
  *   room, for the plate and for the node with its ring;
  * - every other label tries the right of its node, then the left;
- * - forced labels are drawn even when both sides are taken (on the right);
+ * - no label goes into the HUD or past the edge of the viewport;
+ * - forced labels are drawn even when both sides are taken by other labels
+ *   (on the first side that is clear of the HUD and the edges);
  * - any other label that fits on neither side is left out of this frame.
  * Returns the labels to draw, plates excluded, in priority order.
  */
-export function placeLabels(candidates: readonly LabelCandidate[], metrics: LabelMetrics): PlacedLabel[] {
+export function placeLabels(
+  candidates: readonly LabelCandidate[],
+  metrics: LabelMetrics,
+  bounds: LabelBounds = NO_BOUNDS,
+): PlacedLabel[] {
   const ordered = [...candidates].sort(compareCandidates)
   const occupancy = new Occupancy()
+  const hud = new Occupancy()
+  for (const rect of bounds.reserved) hud.add(rect)
+  const { width: viewportWidth, height: viewportHeight } = bounds
+  const isAllowed = (box: LabelBox): boolean =>
+    !hud.collides(box) &&
+    (viewportWidth === undefined || (box.left >= 0 && box.right <= viewportWidth)) &&
+    (viewportHeight === undefined || (box.top >= 0 && box.bottom <= viewportHeight))
   const placed: PlacedLabel[] = []
   for (const candidate of ordered) {
     const width = metrics.measure(candidate.label)
@@ -176,20 +201,22 @@ export function placeLabels(candidates: readonly LabelCandidate[], metrics: Labe
       occupancy.add(ringBox(candidate))
       continue
     }
-    const right = textBox(candidate, 'right', width, metrics.labelSize)
-    const left = textBox(candidate, 'left', width, metrics.labelSize)
-    const fit = !occupancy.collides(right.box)
-      ? right
-      : !occupancy.collides(left.box)
-        ? left
-        : candidate.rank === LABEL_RANK.forced
-          ? right
-          : null
+    const sides = [
+      textBox(candidate, 'right', width, metrics.labelSize),
+      textBox(candidate, 'left', width, metrics.labelSize),
+    ].filter((side) => isAllowed(side.box))
+    const fit =
+      sides.find((side) => !occupancy.collides(side.box)) ??
+      (candidate.rank === LABEL_RANK.forced ? sides[0] : undefined)
     if (!fit) continue
     occupancy.add(fit.box)
     placed.push(fit)
   }
   return placed
+}
+
+function sameBounds(a: LabelBounds, b: LabelBounds): boolean {
+  return a.width === b.width && a.height === b.height && sameRects(a.reserved, b.reserved)
 }
 
 function sameCandidates(a: readonly LabelCandidate[], b: readonly LabelCandidate[]): boolean {
@@ -210,14 +237,28 @@ function sameCandidates(a: readonly LabelCandidate[], b: readonly LabelCandidate
  * while the camera rests: the candidates are then identical, and the previous
  * placement is reused instead of sorted and checked again.
  */
-export function createLabelPlacer(): (candidates: readonly LabelCandidate[], metrics: LabelMetrics) => PlacedLabel[] {
-  let previous: { candidates: readonly LabelCandidate[]; labelSize: number; placed: PlacedLabel[] } | null = null
-  return (candidates, metrics) => {
-    if (previous && previous.labelSize === metrics.labelSize && sameCandidates(previous.candidates, candidates)) {
+export function createLabelPlacer(): (
+  candidates: readonly LabelCandidate[],
+  metrics: LabelMetrics,
+  bounds?: LabelBounds,
+) => PlacedLabel[] {
+  let previous: {
+    candidates: readonly LabelCandidate[]
+    labelSize: number
+    bounds: LabelBounds
+    placed: PlacedLabel[]
+  } | null = null
+  return (candidates, metrics, bounds = NO_BOUNDS) => {
+    if (
+      previous &&
+      previous.labelSize === metrics.labelSize &&
+      sameBounds(previous.bounds, bounds) &&
+      sameCandidates(previous.candidates, candidates)
+    ) {
       return previous.placed
     }
-    const placed = placeLabels(candidates, metrics)
-    previous = { candidates, labelSize: metrics.labelSize, placed }
+    const placed = placeLabels(candidates, metrics, bounds)
+    previous = { candidates, labelSize: metrics.labelSize, bounds, placed }
     return placed
   }
 }

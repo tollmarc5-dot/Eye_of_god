@@ -31,10 +31,17 @@ test.describe('search', () => {
     // Focus zooms to a fixed ratio; the camera lands in the URL once it rests.
     expect(viewParam(page, 'cam')).toMatch(/,0\.2$/)
 
-    // The node is now at the centre of the canvas: a click there keeps it selected.
-    const viewport = page.viewportSize()
-    if (!viewport) throw new Error('no viewport')
-    await page.mouse.click(viewport.width / 2, viewport.height / 2)
+    // The node is now at the centre of the area the panels leave free: a click there keeps it selected.
+    const box = async (selector: string) => {
+      const found = await page.locator(selector).boundingBox()
+      if (!found) throw new Error(`no ${selector}`)
+      return found
+    }
+    const left = await box('.eog-explorer')
+    const right = await box('.eog-inspector')
+    const top = await box('.eog-topbar__search')
+    const bottom = await box('.eog-dock')
+    await page.mouse.click((left.x + left.width + right.x) / 2, (top.y + top.height + bottom.y) / 2)
     await expect(inspectedName(page)).toHaveText(label)
   })
 

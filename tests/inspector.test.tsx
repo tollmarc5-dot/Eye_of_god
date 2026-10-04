@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { adaptGraphify } from '@/data'
 import { InspectorPanel } from '@/features/inspector/InspectorPanel'
@@ -189,6 +189,28 @@ describe('advanced inspector', () => {
   })
 
   afterEach(cleanup)
+
+  test('the node is named in a pinned header, apart from the scrolling details', () => {
+    open('hub')
+
+    const identity = panel().getByText('hub()', { selector: '.eog-node__name' }).closest('.eog-node-identity')
+    expect(identity).not.toBeNull()
+    // Not inside the summary: a sticky header only stays pinned while its own block is on screen.
+    expect(identity?.closest('.eog-node')).toBeNull()
+    expect(identity?.parentElement?.classList.contains('eog-panel__body')).toBe(true)
+  })
+
+  test('a new selection starts at the top of the inspector, with the new node named', () => {
+    open('hub')
+    const body = screen.getByRole('region', { name: 'Node inspector' }).querySelector('.eog-panel__body')
+    if (!body) throw new Error('inspector body not found')
+    body.scrollTop = 480
+
+    act(() => useAppStore.setState({ selectedNodeId: 'caller_01' }))
+
+    expect(body.scrollTop).toBe(0)
+    expect(panel().getByText(/caller/, { selector: '.eog-node__name' })).toBeDefined()
+  })
 
   test('shows the real metadata of the node', () => {
     open('hub')

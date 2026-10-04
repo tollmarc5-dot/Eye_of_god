@@ -280,3 +280,69 @@ describe('label layer', () => {
     expect(rects[0]?.slice(0, 4)).toEqual([box.left, box.top, box.right - box.left, box.bottom - box.top])
   })
 })
+
+describe('labels and the HUD', () => {
+  // A panel covering x 200–400, y 0–300 of a 1000 × 800 viewport.
+  const panel: LabelBox = { left: 200, top: 0, right: 400, bottom: 300 }
+  const inViewport = { reserved: [panel], width: 1000, height: 800 }
+  const intersects = (a: LabelBox, b: LabelBox) => overlaps(a, b)
+
+  test('a label that would enter the HUD goes to the other side of its node', () => {
+    // On the right it would run from 158 to 228, into the panel; on the left it is clear.
+    const placed = placeLabels([candidate('near-panel', 150, 100)], metrics, inViewport)
+
+    expect(placed.map((label) => label.side)).toEqual(['left'])
+  })
+
+  test('with no clear side the label is left out, never drawn into the HUD', () => {
+    expect(placeLabels([candidate('under-panel', 300, 100)], metrics, inViewport)).toEqual([])
+  })
+
+  test('in a dense scene no label touches the HUD, and none touches another', () => {
+    const reserved = [panel, { left: 600, top: 500, right: 1000, bottom: 800 }]
+    const placed = placeLabels(denseScene(600, 5), metrics, { reserved, width: 1440, height: 900 })
+
+    expect(placed.length).toBeGreaterThan(50)
+    for (const label of placed) {
+      for (const zone of reserved) expect(intersects(label.box, zone), label.candidate.key).toBe(false)
+    }
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) expect(overlaps(placed[i]!.box, placed[j]!.box)).toBe(false)
+    }
+  })
+
+  test('the selected plate is kept under the HUD too: Sigma draws it, and it still reserves its room', () => {
+    const selected = candidate('selected', 380, 100, { rank: LABEL_RANK.selected })
+    const neighbour = candidate('neighbour', 420, 104)
+
+    const placed = placeLabels([neighbour, selected], metrics, inViewport)
+
+    expect(placed.map((label) => label.candidate.key)).not.toContain('selected')
+    const plate = plateBox(selected, metrics.measure('selected'), LABEL_SIZE)
+    for (const label of placed) expect(overlaps(label.box, plate)).toBe(false)
+  })
+
+  test('a forced label keeps its priority but never enters the HUD', () => {
+    const waypoint = candidate('waypoint', 150, 100, { rank: LABEL_RANK.forced })
+    expect(placeLabels([waypoint], metrics, inViewport).map((label) => label.side)).toEqual(['left'])
+
+    const buried = candidate('buried', 300, 100, { rank: LABEL_RANK.forced })
+    expect(placeLabels([buried], metrics, inViewport)).toEqual([])
+  })
+
+  test('labels never run past the edges of the viewport', () => {
+    // Close to the right edge: drawn on the left of its node.
+    expect(placeLabels([candidate('edge-right', 990, 600)], metrics, inViewport).map((l) => l.side)).toEqual(['left'])
+    // Cut on both sides by the top edge: left out.
+    expect(placeLabels([candidate('edge-top', 700, 2)], metrics, inViewport)).toEqual([])
+  })
+
+  test('the placer computes again when the HUD changes, and only then', () => {
+    const place = createLabelPlacer()
+    const scene = denseScene(40, 9)
+
+    const first = place(scene, metrics, { reserved: [], width: 1440, height: 900 })
+    expect(place(scene, metrics, { reserved: [], width: 1440, height: 900 })).toBe(first)
+    expect(place(scene, metrics, inViewport)).not.toBe(first)
+  })
+})

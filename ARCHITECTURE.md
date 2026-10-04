@@ -140,6 +140,8 @@ Los ids de nodo y la dirección de las relaciones se conservan tal cual.
   transiciones duran 250 ms, o 0 con `prefers-reduced-motion`. El zoom está
   acotado entre 50× más cerca y 4× más lejos que el encuadre inicial
   (`CAMERA_RATIO_LIMITS`), para la rueda, los botones y las cámaras restauradas.
+  Desde la Fase 15A todo encuadre se centra en el área que deja libre el HUD
+  (ver «Legibilidad del HUD (Fase 15A)»).
 
 ## Grafo vivo (refinamiento visual)
 
@@ -772,6 +774,74 @@ la política de caché en el README.
 **Verificación de producción.** `EOG_E2E_BASE_URL` hace que Playwright pruebe
 una URL desplegada en lugar del build local (sin servidor). Primera
 publicación: los 43 e2e pasan contra la URL pública.
+
+## Legibilidad del HUD (Fase 15A)
+
+Solo presentación: ni el adaptador, ni el modelo, ni graphology, ni el
+contrato de la URL, ni la CI cambian, y no hay dependencias nuevas.
+
+**Zonas del HUD.** `useHudOcclusion` (`src/ui/occlusion.ts`) mide lo que tapa
+cada pieza del HUD (marca, búsqueda, cabecera derecha, paneles abiertos,
+pestañas, dock, lectura de zoom, banda de modo; la lista de resultados de la
+búsqueda no cuenta) con `ResizeObserver`, `MutationObserver`, `resize` y
+`transitionend`, como mucho una vez por fotograma, redondeado hacia fuera a
+8 px, y solo avisa si algo cambió. Se entrega al renderer con
+`GraphRenderer.setOccludedRects`; no pasa por el store ni por la URL. Además,
+`setOcclusionSource` permite al renderer volver a medir en el momento de
+encuadrar, para que un panel que cambia en la misma actualización (el
+Inspector que se llena al seleccionar) ya cuente.
+
+**Área libre.** `src/renderer/free-area.ts` convierte las zonas en márgenes
+(`freeInsets`): un panel alto (≥ 40 % de la altura) empuja su lado, una pieza
+ancha (≥ 60 % del ancho) o una barra fina junto al borde superior o inferior
+empuja ese borde, y el resto (un Inspector vacío y corto en una esquina) no
+mueve el encuadre, pero las etiquetas lo evitan y cuenta para la visibilidad
+del seleccionado. Siempre queda al menos un 30 % del ancho y un 25 % del alto.
+
+| Qué | Comportamiento |
+|---|---|
+| Etiquetas | Nunca dentro de una zona del HUD ni cortadas por el borde: se prueba el otro lado y, si tampoco cabe, se omite. Las placas (seleccionado, hover) no se omiten nunca |
+| FOCUS, búsqueda, navegación | El nodo queda en el centro del área libre (cámara = 2P − Q con `viewportToFramedGraph`) |
+| `frameNodes`, RESET | Encajan en el área libre, con márgenes de 32 px |
+| HUD que cambia | Si tapa el nodo seleccionado o el final de su placa, la cámara lo devuelve al área libre (nodo y placa juntos), cuando termina la transición en curso |
+| Cámara restaurada (enlace, recarga) | Se respeta tal cual hasta que el usuario actúa (puntero, rueda, zoom, otra selección o encuadre) |
+| Vista de comunidades | Al activarla se encuadra; si la vista viene de un enlace con cámara, gana la cámara |
+
+Consecuencia visible: como el HUD (barra superior, dock y paneles) ocupa parte
+de la pantalla, RESET suele dejar una cámara distinta de la inicial y la URL
+guarda `cam=`. El formato de la URL no cambia. La vista inicial de un enlace
+sin `cam` sigue siendo la cámara por defecto de Sigma.
+
+**Inspector.** La identidad del nodo (tipo, etiquetas y nombre,
+`NodeIdentity`) es fija arriba del panel (`position: sticky`) y el scroll
+vuelve a 0 al cambiar de selección. `.eog-node__name` y los nombres
+accesibles no cambian.
+
+**Contraste.** `--eog-surface` pasa a opacidad 0,90 y `--eog-text-faint` a
+`#8195b2`: los tres niveles de texto superan 4,5:1 incluso con el panel sobre
+blanco puro (peor caso, `tests/tokens-contrast.test.ts`, que lee
+`tokens.css`).
+
+**Movimiento reducido.** La cámara salta sin transición y en reposo no hay
+ninguna llamada a `requestAnimationFrame` (comprobado en
+`e2e/legibility.spec.ts`).
+
+**Tests añadidos.** Unitarios: `free-area.test.ts`, `occlusion.test.tsx`,
+`tokens-contrast.test.ts`, «labels and the HUD» en `labels.test.ts`,
+«HUD occlusion» en `renderer.test.ts`, refit de la vista de comunidades en
+`communities.test.tsx`, identidad fija y scroll en `inspector.test.tsx`. E2E:
+`legibility.spec.ts` (etiquetas fuera del HUD medidas en el canvas a 1440,
+nodo y placa seleccionados libres a 1440, 1024 y 390, identidad del Inspector,
+refit de comunidades, búsqueda/FOCUS/zoom/RESET, movimiento reducido). Dos e2e
+existentes se ajustaron a la nueva semántica: el clic de `search.spec.ts` va
+al centro del área libre y `explorer.spec.ts` admite `cam=` tras limpiar el
+ámbito.
+
+**Coste medido** (build de producción, Chrome con interfaz, DPR 2, 5 ejecuciones
+por medición, tres mediciones intercaladas con la versión anterior): primer
+render listo con 3.271 nodos 3.726 ms de mediana frente a 3.638 ms (+2,4 %);
+con 721 nodos 719 frente a 703 ms; CPU por fotograma 0,6–0,7 ms de mediana y
+1,3–1,6 ms en p95; JS +2,0 kB comprimido; DOM sin cambios (683 nodos).
 
 ## Mediciones
 

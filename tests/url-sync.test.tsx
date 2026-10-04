@@ -26,6 +26,8 @@ vi.mock('@/renderer', () => ({
     fake.events = events
     return {
       setViewState: vi.fn(),
+      setOccludedRects: vi.fn(),
+      setOcclusionSource: vi.fn(),
       focusNode: fake.focusNode,
       frameNeighborhood: vi.fn(() => true),
       frameNodes: fake.frameNodes,

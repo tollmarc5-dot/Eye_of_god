@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { computeAggregates, type GraphIndex, type KnowledgeGraph } from '@/graph'
-import { createSigmaRenderer, type GraphRenderer, type Highlight } from '@/renderer'
+import { createSigmaRenderer, type GraphRenderer, type Highlight, type ScreenRect } from '@/renderer'
 import { ensurePositions } from '@/state/graph-session'
 import { useExpansion, usePathView, useScope, useVisibility } from '@/state/selectors'
 import { useAppStore } from '@/state/store'
@@ -14,18 +14,8 @@ interface GraphWorldProps {
   readonly positions: PositionMap
   /** Filled with the live renderer so the HUD can send camera commands. */
   readonly rendererRef: RefObject<GraphRenderer | null>
-}
-
-// Must match layout.css: below this width panels overlay the graph instead of flanking it.
-const FLANKING_PANELS_QUERY = '(min-width: 1101px)'
-// Panel width plus its gutters.
-const PANEL_SIDE_INSET = 320
-
-/** Space the open panels take on each side; read when the camera frames a scope. */
-function panelSideInset(): number {
-  const { panels } = useAppStore.getState()
-  const hasFlankingPanel = panels.explorer || panels.inspector
-  return hasFlankingPanel && window.matchMedia(FLANKING_PANELS_QUERY).matches ? PANEL_SIDE_INSET : 0
+  /** Measures what the HUD covers right now; handed to a renderer as soon as it exists. None: nothing. */
+  readonly measureOccluded?: () => readonly ScreenRect[]
 }
 
 function prefersReducedMotion(): boolean {
@@ -36,7 +26,7 @@ function prefersReducedMotion(): boolean {
  * The world: owns the Sigma renderer. React only pushes coarse state into it
  * (selection, visibility); hover, camera and every frame stay in the renderer.
  */
-export function GraphWorld({ model, index, graph, positions, rendererRef }: GraphWorldProps) {
+export function GraphWorld({ model, index, graph, positions, rendererRef, measureOccluded }: GraphWorldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const relations = useAppStore((state) => state.filters.relations)
@@ -126,10 +116,11 @@ export function GraphWorld({ model, index, graph, positions, rendererRef }: Grap
       },
       {
         cameraDuration: prefersReducedMotion() ? 0 : undefined,
-        getSideInset: panelSideInset,
         reducedMotion: prefersReducedMotion(),
       },
     )
+    // Later changes arrive through the HUD; each framing also reads it afresh.
+    if (measureOccluded) renderer.setOcclusionSource(measureOccluded)
     rendererRef.current = renderer
     if (import.meta.env.DEV) {
       // Handle for browser tests and debugging; not part of the production build.
@@ -139,7 +130,7 @@ export function GraphWorld({ model, index, graph, positions, rendererRef }: Grap
       rendererRef.current = null
       renderer.destroy()
     }
-  }, [graph, rendererRef, selectNode, selectCommunity, setView, setCamera, recordMetrics])
+  }, [graph, rendererRef, measureOccluded, selectNode, selectCommunity, setView, setCamera, recordMetrics])
 
   useEffect(() => {
     rendererRef.current?.setViewState({
@@ -172,6 +163,16 @@ export function GraphWorld({ model, index, graph, positions, rendererRef }: Grap
     framedScope.current = scope
     rendererRef.current?.resetCamera()
   }, [rendererRef, scope])
+
+  // Entering the community view is a new picture: every aggregate is framed.
+  // A camera restored from a link (cameraRequest) wins, as it does for a scope.
+  const framedMode = useRef(aggregation.mode)
+  useEffect(() => {
+    if (framedMode.current === aggregation.mode) return
+    framedMode.current = aggregation.mode
+    if (aggregation.mode !== 'communities' || useAppStore.getState().cameraRequest !== null) return
+    rendererRef.current?.resetCamera()
+  }, [rendererRef, aggregation.mode])
 
   // Declared after the two effects above so the camera travels to the node
   // once it is drawn (it may still be waiting for its layout).

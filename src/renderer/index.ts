@@ -21,6 +21,17 @@ export {
   type ZoomLevel,
 } from './zoom-level'
 export {
+  freeCentre,
+  freeInsets,
+  isInFreeArea,
+  isUnderRects,
+  NO_INSETS,
+  quantizeRect,
+  sameRects,
+  type FreeInsets,
+  type ScreenRect,
+} from './free-area'
+export {
   createFrameMonitor,
   initialQuality,
   resolveEffects,

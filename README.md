@@ -89,8 +89,10 @@ falla, se detiene y devuelve error.
 
 Los e2e (`e2e/`) recorren carga, búsqueda, Explorer, navegación, comunidades,
 URL, compartir, combinaciones de funciones (`interactions.spec.ts`), casos
-límite, etiquetas sin solapes y uso solo con teclado (`edge-cases.spec.ts`), y
-cada flujo principal a 1440×900, 1024×768 y 390×780 (`responsive.spec.ts`).
+límite, etiquetas sin solapes y uso solo con teclado (`edge-cases.spec.ts`),
+cada flujo principal a 1440×900, 1024×768 y 390×780 (`responsive.spec.ts`), y
+la legibilidad con el HUD abierto: etiquetas fuera de los paneles, nodo
+seleccionado visible y movimiento reducido (`legibility.spec.ts`).
 
 Navegador de los e2e: en local se usa el Google Chrome instalado, sin descargar
 nada. En CI se usa el Chromium de Playwright (`npx playwright install chromium`
