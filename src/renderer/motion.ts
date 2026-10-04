@@ -20,10 +20,12 @@ export interface Effects {
 }
 
 /** Level of detail: the closer the camera, the more each effect shows. */
+// No pulses on resting edges: a pulse says a relation is active (hover,
+// selection, path), never decoration.
 const EFFECTS_BY_LEVEL: Readonly<Record<ZoomLevel, Effects>> = {
   universe: { amplitude: 1.2, glow: 0.75, ambientFlow: 0, focusFlow: 1 },
-  structure: { amplitude: 1.9, glow: 0.9, ambientFlow: 0.3, focusFlow: 1 },
-  detail: { amplitude: 3, glow: 1, ambientFlow: 0.6, focusFlow: 1 },
+  structure: { amplitude: 1.9, glow: 0.9, ambientFlow: 0, focusFlow: 1 },
+  detail: { amplitude: 3, glow: 1, ambientFlow: 0, focusFlow: 1 },
 }
 
 const CALM_AMPLITUDE_FACTOR = 0.6

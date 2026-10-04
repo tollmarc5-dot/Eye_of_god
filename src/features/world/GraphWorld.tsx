@@ -28,6 +28,10 @@ function prefersReducedMotion(): boolean {
  */
 export function GraphWorld({ model, index, graph, positions, rendererRef, measureOccluded }: GraphWorldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const communityNames = useMemo(
+    () => new Map(model.communities.map((community) => [community.id, community.name])),
+    [model],
+  )
 
   const relations = useAppStore((state) => state.filters.relations)
   const scope = useScope()
@@ -117,6 +121,7 @@ export function GraphWorld({ model, index, graph, positions, rendererRef, measur
       {
         cameraDuration: prefersReducedMotion() ? 0 : undefined,
         reducedMotion: prefersReducedMotion(),
+        communityNames,
       },
     )
     // Later changes arrive through the HUD; each framing also reads it afresh.
@@ -130,7 +135,7 @@ export function GraphWorld({ model, index, graph, positions, rendererRef, measur
       rendererRef.current = null
       renderer.destroy()
     }
-  }, [graph, rendererRef, measureOccluded, selectNode, selectCommunity, setView, setCamera, recordMetrics])
+  }, [graph, communityNames, rendererRef, measureOccluded, selectNode, selectCommunity, setView, setCamera, recordMetrics])
 
   useEffect(() => {
     rendererRef.current?.setViewState({

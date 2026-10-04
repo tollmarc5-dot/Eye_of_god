@@ -843,6 +843,50 @@ render listo con 3.271 nodos 3.726 ms de mediana frente a 3.638 ms (+2,4 %);
 con 721 nodos 719 frente a 703 ms; CPU por fotograma 0,6–0,7 ms de mediana y
 1,3–1,6 ms en p95; JS +2,0 kB comprimido; DOM sin cambios (683 nodos).
 
+## Observatorio (Fase 15B)
+
+Presentación y HUD. Ni el adaptador, ni el modelo, ni graphology, ni la
+búsqueda, ni el contrato de la URL, ni la CI cambian; no hay dependencias
+nuevas (solo el peso 600 de IBM Plex Sans, ya en `@fontsource`).
+
+| Qué | Dónde |
+|---|---|
+| Capa de universo: estrellas, nebulosas, el ojo (párpados, limbo, iris, pupila) | `src/renderer/universe.ts` (canvas 2D detrás de Sigma) |
+| Constelaciones (centroide, dispersión, tamaño por comunidad dibujada) | `computeConstellations` en `universe.ts`, función pura |
+| Nombres de constelación | `draw-labels.ts` (`NamedPoint`), colocados por `label-layout.ts` con rango `constellation` |
+| Anillos del iris (cuantiles de distancia de los nodos) | `irisRings` en `universe.ts`, función pura |
+| Margen de encuadre proporcional a la vista | `stagePaddingFor` en `sigma-renderer.ts` |
+| Halo corto de los agregados | `glow-node.ts` |
+| Vuelo de cámara a un nodo fuera de pantalla | `travelTo` en `sigma-renderer.ts` |
+| Leyenda, rail del Explorer | `src/features/hud/Legend.tsx`, `ExplorerRail.tsx` |
+| Estilos del HUD nuevo, colores forzados | `src/styles/hud.css` |
+
+**Quieto en reposo.** El bucle del grafo vivo (Fase 3) solo arranca con la
+opción `living` del renderer, que la app no activa: sin entrada no se ejecuta
+nada por fotograma. La capa de universo se dibuja desde `afterRender`, solo
+cuando cambian la cámara, el tamaño o lo dibujado.
+
+**Universo.** Las constelaciones se recalculan solo cuando cambia lo que se
+dibuja o llegan posiciones (eventos de graphology); las estrellas se pintan una
+vez en dos tiles de 512 px y se copian; las nebulosas son un sprite por color.
+El ojo se centra en el grafo encuadrado (0,5; 0,5) con radio de iris 0,5.
+
+**HUD.** Rail del Explorer plegado (cada botón abre su sección, desplegada y
+enfocada), leyenda abajo a la izquierda, escala de zoom en la orientación,
+estado junto a la identidad, placas de cristal tras todo texto del HUD, ⌘K /
+Ctrl K, enlaces de salto. La marca y la leyenda (botón y tarjeta abierta)
+forman parte de las zonas del HUD de 15A.
+
+**Inspector.** Cabecera fija: tipo, nombre (Sans 600, 20 px) y ruta abreviada.
+Grado, entradas, salidas y vecinos en una línea de cifras al empezar el
+resumen. Vacío, una tarjeta compacta con la pista de la búsqueda.
+
+**Tests añadidos.** Unitarios: `universe.test.ts`, `hud.test.tsx`, nombres de
+constelación en `labels.test.ts`, vuelo de cámara, quietud por defecto y margen
+proporcional en `renderer.test.ts`. E2E: `observatorio.spec.ts`. Ajustes de selector por el
+rediseño: `.eog-figure` en `communities.spec.ts` y la marca en
+`legibility.spec.ts`.
+
 ## Mediciones
 
 Tomadas con el grafo real en Chromium sin interfaz (Playwright), servidor de

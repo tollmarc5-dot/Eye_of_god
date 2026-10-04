@@ -3,7 +3,7 @@ import type { EdgeAttributes, KnowledgeGraph, NodeAttributes } from '@/graph'
 import type { CameraState, Position } from '@/types/graph'
 import { CANVAS_THEME } from '@/styles/canvas-theme'
 import { hexToUnitRgb } from '@/utils/color'
-import { createLabelLayer, drawNodeHover } from './draw-labels'
+import { createLabelLayer, drawNodeHover, type NamedPoint } from './draw-labels'
 import {
   freeCentre,
   freeInsets,
@@ -25,6 +25,7 @@ import {
 } from './motion'
 import { createFlowEdgeProgram } from './programs/flow-edge'
 import { createGlowNodeProgram } from './programs/glow-node'
+import { computeConstellations, createUniverseLayer, irisRings, type UniverseState } from './universe'
 import {
   computeFocus,
   createReducers,
@@ -58,6 +59,14 @@ export interface RendererOptions {
   readonly cameraDuration?: number
   /** True for users who prefer reduced motion: no continuous animation at all. */
   readonly reducedMotion?: boolean
+  /** Community names, for the constellation names drawn at universe scale. */
+  readonly communityNames?: ReadonlyMap<number, string>
+  /**
+   * The continuous drift of the living graph (Phase 3). Off by default: the
+   * observatory stays still at rest and only moves on hover, selection and
+   * camera moves. Never on under reduced motion.
+   */
+  readonly living?: boolean
 }
 
 /** The app talks to this interface only, never to Sigma directly. */
@@ -109,6 +118,15 @@ const FRAME_MARGIN_Y = 120
 const FRAME_MARGIN_IN_FREE_AREA = 32
 // A selected node closer than this to the edge of the free area counts as hidden.
 const SELECTED_NODE_MARGIN = 24
+/** The eye is the framed graph: its centre, and the iris radius in framed units (half of it). */
+const EYE_CENTRE = { x: 0.5, y: 0.5 }
+const IRIS_FRAMED_RADIUS = 0.5
+/** A flight to a node off screen: how much higher it rises, and how its time splits. */
+const FLIGHT_LIFT = 1.6
+const FLIGHT_SHARE_UP = 0.45
+const FLIGHT_SHARE_DOWN = 0.75
+/** Names of the largest communities shown at universe scale (fewer if they collide). */
+const MAX_CONSTELLATION_NAMES = 12
 /** Room kept between the end of the selected node's plate and the HUD. */
 const PLATE_END_MARGIN = 8
 // While the camera travels, the check for the selected node waits and retries.
@@ -116,7 +134,20 @@ const VISIBILITY_RETRY_MS = 120
 const VISIBILITY_MAX_RETRIES = 25
 // Never zoom in further than this on a tight set of nodes: no extreme close-ups.
 const MIN_FRAME_RATIO = 0.12
-const STAGE_PADDING = 72
+/**
+ * Room Sigma keeps around the graph at the default camera, in proportion to the
+ * view: the whole eye (iris, limbus and lids) fits the first picture.
+ */
+const STAGE_PADDING_SHARE = 0.145
+const STAGE_PADDING_MIN = 48
+const STAGE_PADDING_MAX = 160
+const STAGE_PADDING_FALLBACK = 72
+
+export function stagePaddingFor(width: number, height: number): number {
+  const side = Math.min(width, height)
+  if (!(side > 0)) return STAGE_PADDING_FALLBACK
+  return Math.round(Math.min(STAGE_PADDING_MAX, Math.max(STAGE_PADDING_MIN, side * STAGE_PADDING_SHARE)))
+}
 const VIEW_CHANGE_THROTTLE_MS = 120
 // Fewer, better spaced candidates; the label layer then removes every overlap.
 const LABEL_DENSITY = 0.6
@@ -160,8 +191,9 @@ export function framingRatio(
 ): number {
   const freeWidth = width - insets.left - insets.right
   const freeHeight = height - insets.top - insets.bottom
-  const fitWidth = width - 2 * STAGE_PADDING
-  const fitHeight = height - 2 * STAGE_PADDING
+  const padding = stagePaddingFor(width, height)
+  const fitWidth = width - 2 * padding
+  const fitHeight = height - 2 * padding
   if (!box || !(freeWidth > 0) || !(freeHeight > 0) || !(fitWidth > 0) || !(fitHeight > 0)) return 1
   const boxWidth = box.x[1] - box.x[0]
   const boxHeight = box.y[1] - box.y[0]
@@ -204,10 +236,13 @@ export function createSigmaRenderer(
   // A camera restored from a link stays exactly where it was shared until the
   // user acts: the HUD settling while the page loads must not move it.
   let isCameraHeld = false
+  /** Id of the camera flight in progress; any input or new move bumps it. */
+  let flight = 0
 
   // Shared with the WebGL programs: the render loop writes, the shaders read.
   let level: ZoomLevel = 'universe'
-  const monitor = createFrameMonitor(initialQuality(options.reducedMotion ?? false))
+  // Still unless asked: when nobody acts, nothing runs per frame (see RendererOptions.living).
+  const monitor = createFrameMonitor(options.living ? initialQuality(options.reducedMotion ?? false) : 'still')
   const motion = createMotionUniforms(resolveEffects(level, monitor.quality))
   const accentColor = hexToUnitRgb(CANVAS_THEME.accent)
 
@@ -216,13 +251,31 @@ export function createSigmaRenderer(
     () => view,
     () => focus,
   )
-  const labels = createLabelLayer()
+  const labelSettings = {
+    labelSize: CANVAS_THEME.labelSize,
+    labelFont: CANVAS_THEME.labelFont,
+    labelWeight: CANVAS_THEME.labelWeight,
+  }
+  const labels = createLabelLayer(() => {
+    const context = sigma.getCanvases?.().labels?.getContext('2d')
+    return context ? { context, settings: labelSettings } : null
+  })
+  const universe = createUniverseLayer(container)
+  const NO_UNIVERSE: UniverseState = { constellations: [], rings: [], highlightedCommunity: null }
+  let universeState = NO_UNIVERSE
+  let isUniverseStale = true
+  const markUniverseStale = (): void => {
+    isUniverseStale = true
+  }
+  // Positions arrive after the first frame (third-party layout): the constellations follow.
+  graph.on('nodeAttributesUpdated', markUniverseStale)
+  graph.on('eachNodeAttributesUpdated', markUniverseStale)
   const sigma = new Sigma<NodeAttributes, EdgeAttributes>(graph, container, {
     defaultNodeType: 'glow',
     nodeProgramClasses: { glow: createGlowNodeProgram(motion, accentColor) },
     defaultEdgeType: 'flow',
     edgeProgramClasses: { flow: createFlowEdgeProgram(motion, accentColor) },
-    stagePadding: STAGE_PADDING,
+    stagePadding: stagePaddingFor(container.clientWidth, container.clientHeight),
     labelColor: { color: CANVAS_THEME.label },
     labelFont: CANVAS_THEME.labelFont,
     labelSize: CANVAS_THEME.labelSize,
@@ -257,7 +310,31 @@ export function createSigmaRenderer(
   let hasRendered = false
   sigma.on('beforeRender', labels.reset)
   sigma.on('afterRender', () => {
-    labels.draw({ reserved: occluded, width: container.clientWidth, height: container.clientHeight })
+    // The view was resized: the room around the graph follows (rare, cheap to check).
+    const padding = stagePaddingFor(container.clientWidth, container.clientHeight)
+    if (padding !== sigma.getSetting?.('stagePadding')) sigma.setSetting('stagePadding', padding)
+    const highlightedCommunity = view.selectedCommunityId ?? view.activeCommunity
+    if (isUniverseStale || highlightedCommunity !== universeState.highlightedCommunity) {
+      const isDrawn = (nodeId: string): boolean => !isNodeHidden(view, nodeId)
+      universeState = isUniverseStale
+        ? { constellations: computeConstellations(graph, isDrawn), rings: irisRings(graph, isDrawn), highlightedCommunity }
+        : { ...universeState, highlightedCommunity }
+      isUniverseStale = false
+    }
+    const centre = sigma.framedGraphToViewport(EYE_CENTRE)
+    const rim = sigma.framedGraphToViewport({ x: EYE_CENTRE.x + IRIS_FRAMED_RADIUS, y: EYE_CENTRE.y })
+    universe.draw(
+      {
+        toViewport: (point) => sigma.graphToViewport(point),
+        camera: camera.getState(),
+        eye: { x: centre.x, y: centre.y, radius: Math.hypot(rim.x - centre.x, rim.y - centre.y) },
+      },
+      universeState,
+    )
+    labels.draw(
+      { reserved: occluded, width: container.clientWidth, height: container.clientHeight },
+      constellationNames(),
+    )
     if (hasRendered) return
     hasRendered = true
     events.onFirstRender?.()
@@ -272,8 +349,10 @@ export function createSigmaRenderer(
     setHovered(null)
   }
   container.addEventListener('mouseleave', clearStaleHover)
+  // The user takes the camera: a restored camera is released, a flight ends.
   const releaseCamera = (): void => {
     isCameraHeld = false
+    flight += 1
   }
   container.addEventListener('pointerdown', releaseCamera)
   container.addEventListener('wheel', releaseCamera, { passive: true })
@@ -316,6 +395,33 @@ export function createSigmaRenderer(
       events.onCameraChange?.({ x, y, ratio, angle })
     }, VIEW_CHANGE_THROTTLE_MS)
   })
+
+  /**
+   * At universe scale in the node view, the largest communities are named over
+   * their centre; the label layer places them like any label (HUD, collisions).
+   */
+  const constellationNames = (): NamedPoint[] => {
+    const names = options.communityNames
+    if (!names || (view.aggregates !== null && view.aggregates.size > 0)) return []
+    const named: NamedPoint[] = []
+    // The selected community is named at any scale: it is the subject of the scene.
+    const selected = universeState.constellations.find((c) => c.communityId === view.selectedCommunityId)
+    const selectedName = selected ? names.get(selected.communityId) : undefined
+    if (selected && selectedName) {
+      const { x, y } = sigma.graphToViewport(selected)
+      named.push({ key: `community:${selected.communityId}`, name: selectedName, x, y })
+    }
+    if (level !== 'universe') return named
+    for (const constellation of universeState.constellations) {
+      if (named.length >= MAX_CONSTELLATION_NAMES) break
+      if (constellation === selected) continue
+      const name = names.get(constellation.communityId)
+      if (!name) continue
+      const { x, y } = sigma.graphToViewport(constellation)
+      named.push({ key: `community:${constellation.communityId}`, name, x, y })
+    }
+    return named
+  }
 
   const currentInsets = (): FreeInsets =>
     occluded.length === 0 ? NO_INSETS : freeInsets(container.clientWidth, container.clientHeight, occluded)
@@ -374,6 +480,35 @@ export function createSigmaRenderer(
     })
   }
 
+  /**
+   * Camera travel to a node. Within sight it is one move; to a node off screen
+   * it is a flight: up a little to see where it goes, then down onto it, so the
+   * universe is crossed rather than cut. Any input or new move ends the flight.
+   */
+  const travelTo = (node: { x: number; y: number }, target: { x: number; y: number; ratio: number }): void => {
+    const id = ++flight
+    const total = duration * FOCUS_DURATION_FACTOR
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const seen = sigma.framedGraphToViewport(node)
+    const isOffScreen = width > 0 && height > 0 && (seen.x < 0 || seen.y < 0 || seen.x > width || seen.y > height)
+    if (duration === 0 || !isOffScreen) {
+      void camera.animate(target, { duration: total, easing: 'cubicInOut' })
+      return
+    }
+    const from = camera.getState()
+    const lift = {
+      x: (from.x + target.x) / 2,
+      y: (from.y + target.y) / 2,
+      ratio: Math.min(CAMERA_RATIO_LIMITS.max, Math.max(from.ratio, target.ratio) * FLIGHT_LIFT),
+    }
+    void camera.animate(lift, { duration: total * FLIGHT_SHARE_UP, easing: 'quadraticOut' }).then(() => {
+      // Another move took over (a zoom, a drag, a new selection): it wins.
+      if (id !== flight || camera.isAnimated()) return
+      void camera.animate(target, { duration: total * FLIGHT_SHARE_DOWN, easing: 'cubicInOut' })
+    })
+  }
+
   const applyOccluded = (rects: readonly ScreenRect[]): boolean => {
     if (sameRects(rects, occluded)) return false
     occluded = rects
@@ -409,6 +544,7 @@ export function createSigmaRenderer(
         sigma.refresh({ skipIndexation: !aggregatesChanged })
         return
       }
+      isUniverseStale = true
       visibleBox = visibleBoundingBox(graph, view)
       sigma.setCustomBBox(visibleBox)
       sigma.setSetting('hideEdgesOnMove', countVisibleEdges(graph, view) > HIDE_EDGES_ON_MOVE_ABOVE)
@@ -419,10 +555,7 @@ export function createSigmaRenderer(
       const display = sigma.getNodeDisplayData(nodeId)
       if (!display) return false
       beforeFraming()
-      void camera.animate(inFreeCentre({ x: display.x, y: display.y, ratio: FOCUS_RATIO }), {
-        duration: duration * FOCUS_DURATION_FACTOR,
-        easing: 'cubicInOut',
-      })
+      travelTo(display, inFreeCentre({ x: display.x, y: display.y, ratio: FOCUS_RATIO }))
       return true
     },
     frameNeighborhood(nodeId) {
@@ -505,6 +638,9 @@ export function createSigmaRenderer(
       if (visibilityTimer !== null) clearTimeout(visibilityTimer)
       container.removeEventListener('mouseleave', clearStaleHover)
       container.removeEventListener('pointerdown', releaseCamera)
+      graph.off('nodeAttributesUpdated', markUniverseStale)
+      graph.off('eachNodeAttributesUpdated', markUniverseStale)
+      universe.destroy()
       container.removeEventListener('wheel', releaseCamera)
       // A camera transition still running would keep asking the dead instance to
       // render: a disabled camera ignores it.

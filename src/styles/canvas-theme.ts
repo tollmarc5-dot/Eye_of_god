@@ -9,13 +9,17 @@ export const CANVAS_THEME = {
   /** --eog-text */
   label: '#e9f2ff',
   /** --eog-bg: halo behind labels so they stay readable over nodes and edges. */
-  labelHalo: '#04070d',
+  labelHalo: '#030712',
   /** --eog-surface-solid */
   plate: '#0a1322',
   edge: '#20325a',
   edgeDimmed: '#0b1322',
   edgeFocus: '#6fe6ff',
   nodeDimmed: '#182448',
+  /** Constellation names: white at 72 %, under node labels in the hierarchy. */
+  constellation: 'rgba(233, 242, 255, 0.72)',
+  constellationSize: 11,
+  monoFont: '"IBM Plex Mono", ui-monospace, monospace',
   labelFont: '"IBM Plex Sans", system-ui, sans-serif',
   labelSize: 12,
   labelWeight: '500',

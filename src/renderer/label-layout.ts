@@ -16,10 +16,12 @@ export const LABEL_RANK = {
   hovered: 1,
   /** Labels the view insists on (the waypoints of a shown path). */
   forced: 2,
+  /** Name of a large community, over its centre, at universe scale. */
+  constellation: 3,
   /** A collapsed community: one label stands for many nodes. */
-  aggregate: 3,
+  aggregate: 4,
   /** Everything else, by node size, which encodes the degree. */
-  regular: 4,
+  regular: 5,
 } as const
 
 export type LabelRank = (typeof LABEL_RANK)[keyof typeof LABEL_RANK]
@@ -32,6 +34,10 @@ export interface LabelCandidate {
   readonly y: number
   readonly size: number
   readonly rank: LabelRank
+  /** A constellation name: centred on its point, in its own type (see draw-labels). */
+  readonly style?: 'constellation'
+  /** Text width when the caller measured it (another font); otherwise `metrics.measure`. */
+  readonly width?: number
 }
 
 export interface LabelBox {
@@ -44,7 +50,7 @@ export interface LabelBox {
 /** A label that will be drawn: text starts at `textX`, vertically centred on `y`. */
 export interface PlacedLabel {
   readonly candidate: LabelCandidate
-  readonly side: 'right' | 'left'
+  readonly side: 'right' | 'left' | 'center'
   readonly textX: number
   readonly box: LabelBox
 }
@@ -100,7 +106,12 @@ export function ringBox(candidate: LabelCandidate): LabelBox {
 
 function textBox(candidate: LabelCandidate, side: PlacedLabel['side'], textWidth: number, labelSize: number): PlacedLabel {
   const offset = candidate.size + LABEL_GAP
-  const textX = side === 'right' ? candidate.x + offset : candidate.x - offset - textWidth
+  const textX =
+    side === 'center'
+      ? candidate.x - textWidth / 2
+      : side === 'right'
+        ? candidate.x + offset
+        : candidate.x - offset - textWidth
   return {
     candidate,
     side,
@@ -172,7 +183,8 @@ export const NO_BOUNDS: LabelBounds = { reserved: [] }
  * Greedy placement in priority order:
  * - plates (selected, hovered) are never moved or dropped; they only reserve
  *   room, for the plate and for the node with its ring;
- * - every other label tries the right of its node, then the left;
+ * - every other label tries the right of its node, then the left; a
+ *   constellation name only fits centred on its point;
  * - no label goes into the HUD or past the edge of the viewport;
  * - forced labels are drawn even when both sides are taken by other labels
  *   (on the first side that is clear of the HUD and the edges);
@@ -195,16 +207,17 @@ export function placeLabels(
     (viewportHeight === undefined || (box.top >= 0 && box.bottom <= viewportHeight))
   const placed: PlacedLabel[] = []
   for (const candidate of ordered) {
-    const width = metrics.measure(candidate.label)
+    const width = candidate.width ?? metrics.measure(candidate.label)
     if (isPlateRank(candidate.rank)) {
       occupancy.add(plateBox(candidate, width, metrics.labelSize))
       occupancy.add(ringBox(candidate))
       continue
     }
-    const sides = [
-      textBox(candidate, 'right', width, metrics.labelSize),
-      textBox(candidate, 'left', width, metrics.labelSize),
-    ].filter((side) => isAllowed(side.box))
+    const sides = (
+      candidate.style === 'constellation'
+        ? [textBox(candidate, 'center', width, metrics.labelSize)]
+        : [textBox(candidate, 'right', width, metrics.labelSize), textBox(candidate, 'left', width, metrics.labelSize)]
+    ).filter((side) => isAllowed(side.box))
     const fit =
       sides.find((side) => !occupancy.collides(side.box)) ??
       (candidate.rank === LABEL_RANK.forced ? sides[0] : undefined)
@@ -225,7 +238,15 @@ function sameCandidates(a: readonly LabelCandidate[], b: readonly LabelCandidate
     const p = a[i]
     const q = b[i]
     if (!p || !q) return false
-    if (p.key !== q.key || p.x !== q.x || p.y !== q.y || p.size !== q.size || p.rank !== q.rank || p.label !== q.label) {
+    if (
+      p.key !== q.key ||
+      p.x !== q.x ||
+      p.y !== q.y ||
+      p.size !== q.size ||
+      p.rank !== q.rank ||
+      p.label !== q.label ||
+      p.width !== q.width
+    ) {
       return false
     }
   }

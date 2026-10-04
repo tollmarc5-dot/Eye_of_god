@@ -11,9 +11,9 @@ const LISTED_COMMUNITIES = 8
 
 function Metric({ label, value }: { readonly label: string; readonly value: number }) {
   return (
-    <div className="eog-metric">
-      <dt className="eog-label">{label}</dt>
-      <dd className="eog-metric__value">{formatCount(value)}</dd>
+    <div className="eog-figure">
+      <dt className="eog-figure__label">{label}</dt>
+      <dd className="eog-figure__value">{formatCount(value)}</dd>
     </div>
   )
 }
@@ -80,8 +80,7 @@ export function CommunityInspector({ details }: CommunityInspectorProps) {
           {community.name}
         </p>
 
-        <h3 className="eog-label eog-node__heading">Graph</h3>
-        <dl className="eog-metrics">
+        <dl className="eog-figures">
           <Metric label="Nodes" value={community.size} />
           <Metric label="Visible" value={summary.visibleCount} />
           <Metric label="Internal" value={summary.internalEdgeCount} />

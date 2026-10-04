@@ -26,21 +26,19 @@ afterEach(() => {
 describe('HUD zones', () => {
   test('measures every visible HUD piece relative to the HUD layer, rounded outward to 8 px', () => {
     const root = hud(
-      `<div class="eog-wordmark"><span id="symbol"></span><div id="name"></div></div>
+      `<div class="eog-wordmark"><span></span><div></div></div>
        <div class="eog-search eog-topbar__search" data-open="false"></div>
        <nav class="eog-dock"></nav>`,
       10,
       20,
     )
-    place(root.querySelector('#symbol')!, 26, 36, 32, 40)
-    place(root.querySelector('#name')!, 66, 36, 190, 40)
+    place(root.querySelector('.eog-wordmark')!, 26, 36, 222, 44)
     place(root.querySelector('.eog-search')!, 540, 37, 381, 40)
     place(root.querySelector('.eog-dock')!, 490, 851, 480, 56)
 
     expect(measureHudZones(root)).toEqual([
-      // The wordmark is measured by its children: the element stretches over its grid column.
-      { left: 16, top: 16, right: 48, bottom: 56 },
-      { left: 56, top: 16, right: 248, bottom: 56 },
+      // The identity plate, sized to its content.
+      { left: 16, top: 16, right: 240, bottom: 64 },
       // The search keeps its zone: its data-open is about the results list, not about being shown.
       { left: 528, top: 16, right: 912, bottom: 64 },
       { left: 480, top: 824, right: 960, bottom: 888 },

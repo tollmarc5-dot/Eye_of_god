@@ -92,10 +92,13 @@ export function SearchBox({ search, communities }: SearchBoxProps) {
 
   useEffect(() => {
     const focusSearch = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== FOCUS_SHORTCUT || event.metaKey || event.ctrlKey || event.altKey) return
-      if (isTypingTarget(event.target)) return
+      // ⌘K / Ctrl K works from anywhere, even from another field; "/" only outside one.
+      const isCommandKey = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k'
+      const isSlash = event.key === FOCUS_SHORTCUT && !event.metaKey && !event.ctrlKey && !event.altKey
+      if (!isCommandKey && (!isSlash || isTypingTarget(event.target))) return
       event.preventDefault()
       inputRef.current?.focus()
+      inputRef.current?.select()
     }
     window.addEventListener('keydown', focusSearch)
     return () => window.removeEventListener('keydown', focusSearch)
@@ -137,16 +140,18 @@ export function SearchBox({ search, communities }: SearchBoxProps) {
       <SearchIcon />
       <input
         ref={inputRef}
+        id="eog-search"
         type="text"
         role="combobox"
         aria-label="Search the graph"
+        aria-keyshortcuts="/ Control+K Meta+K"
         aria-expanded={isListShown}
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={isListShown && activeHit ? optionId(results.hits.indexOf(activeHit)) : undefined}
         autoComplete="off"
         spellCheck={false}
-        placeholder="Search nodes, files, communities"
+        placeholder="Search the knowledge graph"
         disabled={!search}
         value={query}
         onChange={(event) => {

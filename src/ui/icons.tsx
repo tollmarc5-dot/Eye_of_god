@@ -131,6 +131,48 @@ export const NeighborsIcon = (props: IconProps) => (
   </Icon>
 )
 
+export const FolderIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M2 4.5h4l1.5 1.5H14v6.5H2Z" />
+  </Icon>
+)
+
+/** Communities: a small constellation. */
+export const ConstellationIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="3.5" cy="11.5" r="1.3" />
+    <circle cx="8" cy="4" r="1.3" />
+    <circle cx="12.5" cy="10" r="1.3" />
+    <path d="M4.3 10.4 7.3 5.1M8.8 5.2l3 3.7M4.8 11.3l6.4-1.1" />
+  </Icon>
+)
+
+/** Key nodes: a hub with its spokes. */
+export const HubIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="8" cy="8" r="2.4" />
+    <path d="M8 2v3.6M8 10.4V14M2 8h3.6M10.4 8H14" />
+  </Icon>
+)
+
+export const FiltersIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+    <circle cx="5.5" cy="4.5" r="1.3" />
+    <circle cx="10.5" cy="8" r="1.3" />
+    <circle cx="6.5" cy="11.5" r="1.3" />
+  </Icon>
+)
+
+/** Legend: a key of marks. */
+export const LegendIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="4" cy="4.5" r="1.5" />
+    <circle cx="4" cy="11.5" r="2.2" />
+    <path d="M8 4.5h5.5M8 11.5h5.5" />
+  </Icon>
+)
+
 /** Minimal eye / orbit mark. Swap this component for the final logo later. */
 export function EyeSymbol({ size = 28 }: IconProps) {
   return (

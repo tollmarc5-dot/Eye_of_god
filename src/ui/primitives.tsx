@@ -19,14 +19,18 @@ interface PanelProps {
   readonly actions?: ReactNode
   /** The scrolling body, for panels that need to move its scroll position. */
   readonly bodyRef?: Ref<HTMLDivElement>
+  /** Anchor for skip links. */
+  readonly id?: string
   readonly children: ReactNode
 }
 
 /** Floating HUD surface. When closed it is hidden AND removed from the tab order. */
-export function Panel({ title, className, isOpen, actions, bodyRef, children }: PanelProps) {
+export function Panel({ title, className, isOpen, actions, bodyRef, id, children }: PanelProps) {
   const titleId = useId()
   return (
     <section
+      id={id}
+      tabIndex={id ? -1 : undefined}
       className={`eog-panel ${className}`}
       aria-labelledby={titleId}
       data-open={isOpen}
@@ -49,15 +53,17 @@ interface SectionProps {
   readonly title: string
   readonly count?: number
   readonly defaultOpen?: boolean
+  /** Name other parts of the HUD use to reach this section (the explorer rail). */
+  readonly anchor?: string
   readonly children: ReactNode
 }
 
 /** Collapsible group inside a panel (disclosure pattern). */
-export function Section({ title, count, defaultOpen = true, children }: SectionProps) {
+export function Section({ title, count, defaultOpen = true, anchor, children }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const contentId = useId()
   return (
-    <div className="eog-section">
+    <div className="eog-section" data-section={anchor}>
       <h3>
         <button
           type="button"
@@ -69,7 +75,7 @@ export function Section({ title, count, defaultOpen = true, children }: SectionP
           <span className="eog-section__chevron">
             <ChevronIcon size={12} />
           </span>
-          <span className="eog-label">{title}</span>
+          <span className="eog-heading">{title}</span>
           {count !== undefined && <span className="eog-section__count">{count}</span>}
         </button>
       </h3>
@@ -87,7 +93,7 @@ interface HudButtonProps {
   readonly disabled?: boolean
   /** Set for toggle buttons. */
   readonly pressed?: boolean
-  readonly tooltipSide?: 'top' | 'bottom'
+  readonly tooltipSide?: 'top' | 'bottom' | 'right'
   readonly tooltipAlign?: 'start' | 'end'
   /** Icon and/or short visible text. */
   readonly children: ReactNode

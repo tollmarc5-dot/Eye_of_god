@@ -5,15 +5,15 @@
  */
 :root {
   /* World */
-  --eog-bg: #04070d;
-  --eog-bg-deep: #02040a;
-  --eog-bg-glow: rgba(46, 104, 214, 0.17);
-  --eog-grid: rgba(120, 170, 255, 0.045);
-  --eog-orbit: rgba(79, 227, 255, 0.09);
+  /* Deep space: black → deep navy. Kept dark so the graph always leads. */
+  --eog-bg: #030712;
+  --eog-bg-deep: #010208;
+  --eog-bg-glow: rgba(18, 75, 255, 0.11);
+  --eog-bg-violet: rgba(106, 76, 255, 0.07);
 
   /* HUD surfaces: translucent, the world stays visible behind them */
   /* 0.9: text on a panel stays ≥ 4.5:1 even over the brightest node (tests/tokens-contrast.test.ts). */
-  --eog-surface: rgba(8, 15, 28, 0.9);
+  --eog-surface: rgba(5, 10, 22, 0.9);
   --eog-surface-raised: rgba(16, 29, 51, 0.82);
   --eog-surface-solid: #0a1322;
   --eog-surface-hover: rgba(126, 170, 230, 0.08);
@@ -24,6 +24,14 @@
   --eog-cyan-soft: rgba(79, 227, 255, 0.12);
   --eog-cyan-line: rgba(79, 227, 255, 0.42);
   --eog-blue: #4d86ff;
+  /* Violet: the secondary accent (communities, depth, secondary states). Never for interaction. */
+  --eog-violet: #8a6bff;
+  --eog-violet-text: #b4a5ff;
+  --eog-violet-line: rgba(138, 107, 255, 0.42);
+  --eog-violet-soft: rgba(138, 107, 255, 0.1);
+  /* Corner brackets of every HUD instrument. */
+  --eog-bracket: rgba(79, 227, 255, 0.55);
+  --eog-bracket-size: 9px;
 
   /* Information */
   --eog-text: #e9f2ff;
@@ -35,14 +43,18 @@
   --eog-warn: #ffc857;
   --eog-danger: #ff6b81;
 
-  /* Lines */
-  --eog-border: rgba(126, 170, 230, 0.16);
-  --eog-border-strong: rgba(126, 170, 230, 0.32);
+  /* Lines: three intensities, always 1 px */
+  --eog-border-soft: rgba(110, 160, 255, 0.08);
+  --eog-border: rgba(110, 160, 255, 0.14);
+  --eog-border-strong: rgba(110, 160, 255, 0.26);
   --eog-hairline: linear-gradient(90deg, transparent, var(--eog-cyan-line), transparent);
 
   /* Light */
   --eog-glow: 0 0 0 1px var(--eog-cyan-line), 0 0 16px rgba(79, 227, 255, 0.16);
-  --eog-shadow-panel: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(160, 200, 255, 0.05);
+  /* Shadows only where a surface floats over another; tinted navy, never black. */
+  --eog-shadow-panel: 0 18px 44px rgba(2, 6, 20, 0.55), inset 0 1px 0 rgba(160, 200, 255, 0.05);
+  --eog-shadow-float: 0 12px 32px rgba(3, 10, 32, 0.6);
+  --eog-surface-elevated: rgba(11, 20, 36, 0.94);
 
   /* Space */
   --eog-space-1: 4px;
@@ -56,6 +68,7 @@
   --eog-radius-sm: 3px;
   --eog-radius-md: 6px;
   --eog-control-size: 40px;
+  --eog-touch-size: 44px;
 
   /* Type */
   --eog-font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -65,7 +78,8 @@
   --eog-text-md: 0.8125rem;
   --eog-text-lg: 0.9375rem;
   --eog-text-xl: 1.125rem;
-  --eog-tracking-label: 0.14em;
+  --eog-text-title: 1.25rem;
+  --eog-tracking-label: 0.12em;
   --eog-tracking-display: 0.3em;
 
   /* Motion */
@@ -73,6 +87,8 @@
   --eog-dur: 180ms;
   --eog-dur-slow: 280ms;
   --eog-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Leaving is quicker than arriving (70 %). */
+  --eog-dur-exit: 126ms;
 
   /* Layout */
   --eog-gutter: 16px;
@@ -96,5 +112,6 @@
     --eog-dur-fast: 0ms;
     --eog-dur: 0ms;
     --eog-dur-slow: 0ms;
+    --eog-dur-exit: 0ms;
   }
 }

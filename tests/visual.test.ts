@@ -97,8 +97,15 @@ describe('level of detail', () => {
     expect(medium.amplitude).toBeLessThan(close.amplitude)
     expect(far.glow).toBeLessThan(medium.glow)
     expect(medium.glow).toBeLessThanOrEqual(close.glow)
-    expect(far.ambientFlow).toBe(0)
-    expect(medium.ambientFlow).toBeLessThan(close.ambientFlow)
+    expect(far.focusFlow).toBe(close.focusFlow)
+  })
+
+  test('resting edges carry no pulses at any scale: only active relations flow', () => {
+    for (const level of ['universe', 'structure', 'detail'] as const) {
+      expect(resolveEffects(level, 'full').ambientFlow).toBe(0)
+      expect(resolveEffects(level, 'full').focusFlow).toBe(1)
+      expect(resolveEffects(level, 'still')).toMatchObject({ ambientFlow: 0, focusFlow: 0 })
+    }
   })
 
   test('a node never drifts more than a few pixels from its base position', () => {

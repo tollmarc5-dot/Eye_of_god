@@ -9,7 +9,7 @@ import { EmptyState, formatCount, HudButton, Panel } from '@/ui/primitives'
 import { CommunityInspector } from './CommunityInspector'
 import { NodeRelations } from './NodeRelations'
 import { PathPanel } from './PathPanel'
-import { NodeIdentity, NodeSummary } from './NodeSummary'
+import { NodeIdentity, NodeMetadata, NodeSummary } from './NodeSummary'
 
 interface InspectorPanelProps {
   readonly model: GraphModel
@@ -43,6 +43,7 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
   const pathView = usePathView(model, graph, index)
 
   const node = selectedNodeId ? index.nodeById.get(selectedNodeId) : undefined
+  const community = node ? model.communities.find((candidate) => candidate.id === node.community) : undefined
   // Walks only this node's edges; recomputed when the selection changes.
   const analysis = useMemo(
     () => (selectedNodeId ? analyzeNode(graph, index, selectedNodeId) : null),
@@ -73,6 +74,7 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
   return (
     <Panel
       title="Node inspector"
+      id="eog-inspector"
       className="eog-inspector"
       isOpen={isOpen}
       bodyRef={bodyRef}
@@ -114,9 +116,10 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
 
       {selectedNodeId === null && selectedCommunityId === null && (
         <EmptyState
+          compact
           title="No node selected"
-          hint="Select a node to inspect it."
-          mark={<EyeSymbol size={36} />}
+          hint="Select a node in the graph, or press / to search."
+          mark={<EyeSymbol size={20} />}
         />
       )}
 
@@ -137,17 +140,12 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
       {node && analysis && (
         <>
           {/* Keyed by id: each selection replays the enter transition and resets list controls. */}
-          <NodeIdentity key={`identity-${node.id}`} node={node} />
+          <NodeIdentity key={`identity-${node.id}`} node={node} community={community} />
           <NodeSummary
             key={`summary-${node.id}`}
             node={node}
-            community={model.communities.find((candidate) => candidate.id === node.community)}
             analysis={analysis}
             hiddenNeighborCount={hiddenNeighborCount}
-            onOpenCommunity={(communityId) => {
-              selectCommunity(communityId)
-              commands.focusCommunity(communityId)
-            }}
           />
           {isAwaitingPosition && (
             <p className="eog-node__status" role="status">
@@ -160,6 +158,15 @@ export function InspectorPanel({ model, index, graph }: InspectorPanelProps) {
             visibleNodeIds={visibleNodeIds}
             communityNames={communityNames}
             onOpen={revealNode}
+          />
+          <NodeMetadata
+            key={`metadata-${node.id}`}
+            node={node}
+            community={community}
+            onOpenCommunity={(communityId) => {
+              selectCommunity(communityId)
+              commands.focusCommunity(communityId)
+            }}
           />
           <div className="eog-node__actions">
             <div className="eog-node__buttons">

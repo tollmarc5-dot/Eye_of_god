@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { adaptGraphify } from '@/data'
 import { applyPositions, buildGraph, buildGraphIndex } from '@/graph'
 import { createSigmaRenderer, framingRatio, LABEL_THRESHOLD_BY_LEVEL, zoomLevelForRatio } from '@/renderer'
+import { stagePaddingFor } from '@/renderer/sigma-renderer'
 import { EMPTY_VIEW_STATE } from '@/renderer/reducers'
 import { CAMERA_RATIO_LIMITS } from '@/renderer/zoom-level'
 import { decodeViewState } from '@/state/url-state'
@@ -80,7 +81,7 @@ vi.mock('sigma', () => ({ default: fake.FakeSigma }))
 vi.mock('sigma/rendering', () => ({ NodeProgram: class {}, EdgeProgram: class {} }))
 vi.mock('sigma/utils', () => ({ floatColor: () => 0 }))
 
-function setup(events: Parameters<typeof createSigmaRenderer>[2] = {}) {
+function setup(events: Parameters<typeof createSigmaRenderer>[2] = {}, cameraDuration = 0) {
   const model = adaptGraphify(makeRawGraph())
   const graph = buildGraph(model)
   applyPositions(graph, new Map(model.nodes.map((node, i) => [node.id, { x: i * 10, y: i * 5 }])))
@@ -90,7 +91,8 @@ function setup(events: Parameters<typeof createSigmaRenderer>[2] = {}) {
     addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
     removeEventListener: (type: string) => listeners.delete(type),
   } as unknown as HTMLElement
-  const renderer = createSigmaRenderer(container, graph, events, { cameraDuration: 0 })
+  // The loop tests need the living graph; the app itself starts still (see the test below).
+  const renderer = createSigmaRenderer(container, graph, events, { cameraDuration, living: true })
   const sigma = fake.FakeSigma.instances.at(-1)
   if (!sigma) throw new Error('Sigma was not instantiated')
   return { renderer, sigma, graph, container, listeners }
@@ -415,6 +417,17 @@ describe('living graph loop', () => {
     })
   })
 
+  test('by default the observatory is still: nothing runs per frame at rest', () => {
+    const { request } = withAnimationFrames(() => {
+      const graph = buildGraph(adaptGraphify(makeRawGraph()))
+      const container = { style: { cursor: '' }, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as HTMLElement
+      const renderer = createSigmaRenderer(container, graph)
+
+      expect(renderer.getMotionQuality()).toBe('still')
+    })
+    expect(request).not.toHaveBeenCalled()
+  })
+
   test('reduced motion never starts the loop, and interaction still works', () => {
     const { request } = withAnimationFrames(() => {
       const model = adaptGraphify(makeRawGraph())
@@ -424,7 +437,7 @@ describe('living graph loop', () => {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       } as unknown as HTMLElement
-      const renderer = createSigmaRenderer(container, graph, {}, { reducedMotion: true })
+      const renderer = createSigmaRenderer(container, graph, {}, { reducedMotion: true, living: true })
       const sigma = fake.FakeSigma.instances.at(-1)
 
       renderer.setViewState({ ...EMPTY_VIEW_STATE, selectedNodeId: 'os' })
@@ -459,14 +472,24 @@ describe('living graph loop', () => {
 })
 
 describe('framingRatio', () => {
+  // What Sigma draws of a 400 × 100 box at ratio 1 in 1440 × 900, inside its padding.
+  const fit = 1440 - 2 * stagePaddingFor(1440, 900)
   const wide = { x: [0, 400], y: [0, 100] } as { x: [number, number]; y: [number, number] }
   const tall = { x: [0, 100], y: [0, 400] } as { x: [number, number]; y: [number, number] }
 
   const sides = (width: number) => ({ left: width, right: width, top: 0, bottom: 0 })
 
   test('zooms out just enough for a wide scope to clear the side panels', () => {
-    // Drawn 1296px wide at ratio 1; only 800px are free between the panels.
-    expect(framingRatio(wide, 1440, 900, sides(320))).toBeCloseTo(1296 / 800)
+    // Drawn `fit` px wide at ratio 1; only 800px are free between the panels.
+    expect(framingRatio(wide, 1440, 900, sides(320))).toBeCloseTo(fit / 800)
+  })
+
+  test('a padding in proportion to the view keeps the whole eye in the first picture', () => {
+    expect(stagePaddingFor(1440, 900)).toBe(Math.round(900 * 0.145))
+    expect(stagePaddingFor(390, 780)).toBe(57)
+    expect(stagePaddingFor(200, 200)).toBe(48)
+    expect(stagePaddingFor(4000, 3000)).toBe(160)
+    expect(stagePaddingFor(0, 0)).toBe(72)
   })
 
   test('leaves Sigma\'s own fit alone when the graph already clears the panels', () => {
@@ -476,10 +499,10 @@ describe('framingRatio', () => {
   })
 
   test('accounts for uneven sides and for what covers the top and the bottom', () => {
-    // 1296 px wide, 324 px tall at ratio 1. A bottom sheet leaves 200 px of height.
-    expect(framingRatio(wide, 1440, 900, { left: 0, right: 0, top: 100, bottom: 600 })).toBeCloseTo(324 / 200)
-    // An explorer on the left only: 1296 / (1440 - 400).
-    expect(framingRatio(wide, 1440, 900, { left: 400, right: 0, top: 0, bottom: 0 })).toBeCloseTo(1296 / 1040)
+    // `fit` px wide, a quarter of that tall at ratio 1. A bottom sheet leaves 200 px of height.
+    expect(framingRatio(wide, 1440, 900, { left: 0, right: 0, top: 100, bottom: 600 })).toBeCloseTo(fit / 4 / 200)
+    // An explorer on the left only.
+    expect(framingRatio(wide, 1440, 900, { left: 400, right: 0, top: 0, bottom: 0 })).toBeCloseTo(fit / 1040)
   })
 })
 
@@ -487,8 +510,8 @@ describe('HUD occlusion', () => {
   // A full-height panel on the left of a 1000 × 800 viewport: the free area is x 300–1000.
   const leftPanel = { left: 0, top: 0, right: 300, bottom: 800 }
 
-  function sized() {
-    const parts = setup()
+  function sized(cameraDuration = 0) {
+    const parts = setup({}, cameraDuration)
     Object.assign(parts.container, { clientWidth: 1000, clientHeight: 800 })
     return parts
   }
@@ -591,6 +614,35 @@ describe('HUD occlusion', () => {
     sigma.camera.isAnimated.mockReturnValue(false)
     vi.advanceTimersByTime(200)
     vi.useRealTimers()
+    expect(sigma.camera.animate).toHaveBeenCalledOnce()
+  })
+
+  test('a node off screen is reached by a flight: up a little, then down onto it', async () => {
+    const { renderer, sigma } = sized(250)
+    // Drawn at x 2000: outside the 1000 px view.
+    sigma.getNodeDisplayData.mockImplementation(() => ({ x: 2, y: 0.4 }))
+
+    renderer.focusNode('os')
+    expect(sigma.camera.animate).toHaveBeenCalledOnce()
+    const [lift] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number; ratio: number }]
+    expect(lift.ratio).toBeGreaterThan(1)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const [landing] = sigma.camera.animate.mock.calls.at(-1) as unknown as [{ x: number; ratio: number }]
+    expect(sigma.camera.animate).toHaveBeenCalledTimes(2)
+    expect(landing).toMatchObject({ x: 2, ratio: 0.2 })
+  })
+
+  test('the user grabbing the camera ends a flight halfway', async () => {
+    const { renderer, sigma, listeners } = sized(250)
+    sigma.getNodeDisplayData.mockImplementation(() => ({ x: 2, y: 0.4 }))
+
+    renderer.focusNode('os')
+    listeners.get('pointerdown')?.()
+    await Promise.resolve()
+    await Promise.resolve()
+
     expect(sigma.camera.animate).toHaveBeenCalledOnce()
   })
 

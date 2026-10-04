@@ -10,6 +10,8 @@ import { InspectorPanel } from '@/features/inspector/InspectorPanel'
 import { GraphCommandsContext, type GraphCommands } from '@/features/world/graph-commands'
 import { GraphWorld } from '@/features/world/GraphWorld'
 import { WorldBackdrop } from '@/features/world/WorldBackdrop'
+import { ExplorerRail } from '@/features/hud/ExplorerRail'
+import { Legend } from '@/features/hud/Legend'
 import type { GraphRenderer, ScreenRect } from '@/renderer'
 import { loadGraphSession } from '@/state/graph-session'
 import { useAppStore } from '@/state/store'
@@ -81,6 +83,11 @@ export function AppShell() {
   return (
     <GraphCommandsContext.Provider value={commands}>
       <div className="eog-shell">
+        {/* First in the tab order: straight to the search or the inspector. */}
+        <nav className="eog-skip" aria-label="Skip links">
+          <a href="#eog-search">Skip to search</a>
+          {data.status === 'ready' && <a href="#eog-inspector">Skip to the inspector</a>}
+        </nav>
         <WorldBackdrop />
         {data.status === 'ready' && (
           <GraphWorld
@@ -98,19 +105,7 @@ export function AppShell() {
           {data.status === 'ready' && (
             <>
               <ExplorerPanel model={data.model} index={data.index} />
-              {!panels.explorer && (
-                <div className="eog-panel-tab eog-panel-tab--left">
-                  <HudButton
-                    label="Open explorer"
-                    iconOnly
-                    tooltipSide="bottom"
-                    tooltipAlign="start"
-                    onClick={() => setPanel('explorer', true)}
-                  >
-                    <PanelIcon />
-                  </HudButton>
-                </div>
-              )}
+              {!panels.explorer && <ExplorerRail />}
               <InspectorPanel model={data.model} index={data.index} graph={data.graph} />
               {!panels.inspector && (
                 <div className="eog-panel-tab eog-panel-tab--right">
@@ -125,6 +120,7 @@ export function AppShell() {
                   </HudButton>
                 </div>
               )}
+              <Legend />
               <GraphControls />
               <NavigationStatus model={data.model} index={data.index} graph={data.graph} />
               <ViewReadout model={data.model} />

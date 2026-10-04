@@ -16,8 +16,8 @@ test.describe('communities', () => {
     const communityId = viewParam(page, 'community')
     expect(communityId).not.toBeNull()
     // Total and visible members are both shown.
-    await expect(inspector(page).locator('.eog-metric', { hasText: 'Nodes' })).toContainText(/\d+/)
-    await expect(inspector(page).locator('.eog-metric', { hasText: 'Visible' })).toContainText(/\d+/)
+    await expect(inspector(page).locator('.eog-figure', { hasText: 'Nodes' })).toContainText(/\d+/)
+    await expect(inspector(page).locator('.eog-figure', { hasText: 'Visible' })).toContainText(/\d+/)
 
     await inspector(page).getByRole('button', { name: /^Expand:/ }).click()
     await expect(inspector(page).locator('.eog-node__tags')).toContainText('Expanded')

@@ -60,7 +60,9 @@ async function installCanvasProbe(page: Page): Promise<void> {
 
 /** Everything the HUD covers right now, as the user sees it. */
 const HUD_SELECTOR = [
-  '.eog-wordmark > *',
+  '.eog-wordmark',
+  '.eog-legend__toggle',
+  '.eog-legend__panel:not([hidden])',
   '.eog-topbar__search',
   '.eog-topbar__end',
   '.eog-explorer[data-open="true"]',

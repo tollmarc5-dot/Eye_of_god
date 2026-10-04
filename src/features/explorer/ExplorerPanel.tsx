@@ -195,7 +195,7 @@ export function ExplorerPanel({ model, index }: ExplorerPanelProps) {
         )}
       </div>
 
-      <Section title="Projects" count={facets.projects.length}>
+      <Section anchor="projects" title="Projects" count={facets.projects.length}>
         <CountedList
           items={facets.projects}
           activeName={scope.project}
@@ -219,7 +219,7 @@ export function ExplorerPanel({ model, index }: ExplorerPanelProps) {
         )}
       </Section>
 
-      <Section title="Communities" count={facets.communities.length}>
+      <Section anchor="communities" title="Communities" count={facets.communities.length}>
         <Switch label="Community view" checked={isCommunityMode} onChange={setCommunityMode} />
         {facets.communities.length === 0 ? (
           <EmptyState compact title="No communities" hint="Nothing matches the current filters." />
@@ -278,7 +278,7 @@ export function ExplorerPanel({ model, index }: ExplorerPanelProps) {
         )}
       </Section>
 
-      <Section title="Key nodes" count={facets.keyNodes.length}>
+      <Section anchor="key-nodes" title="Key nodes" count={facets.keyNodes.length}>
         {facets.keyNodes.length === 0 ? (
           <EmptyState compact title="No nodes in view" hint="Clear the scope or relax the filters." />
         ) : (
@@ -306,7 +306,7 @@ export function ExplorerPanel({ model, index }: ExplorerPanelProps) {
         )}
       </Section>
 
-      <Section title="Filters">
+      <Section anchor="filters" title="Filters">
         <Switch
           label="Third-party code"
           checked={!filters.hideThirdParty}

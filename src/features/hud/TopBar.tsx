@@ -6,15 +6,19 @@ import type { GraphModel } from '@/types/graph'
 import { EyeSymbol } from '@/ui/icons'
 import { formatCount, Stat, StatusIndicator, type StatusTone } from '@/ui/primitives'
 
-function Wordmark() {
+/** Identity and the state of the system, together: top-left. */
+function Wordmark({ status }: { readonly status: SystemStatus }) {
   return (
     <div className="eog-wordmark">
       <span className="eog-wordmark__symbol">
         <EyeSymbol />
       </span>
-      <div>
+      <div className="eog-wordmark__text">
         <h1 className="eog-wordmark__name">EYE OF GOD</h1>
-        <span className="eog-wordmark__tagline">GRAPH INTELLIGENCE SYSTEM</span>
+        <div className="eog-wordmark__line">
+          <span className="eog-wordmark__tagline">Knowledge observatory</span>
+          <StatusIndicator {...status} />
+        </div>
       </div>
     </div>
   )
@@ -64,12 +68,11 @@ export function TopBar() {
   const ready = data.status === 'ready' ? data : null
   return (
     <header className="eog-topbar">
-      <Wordmark />
+      <Wordmark status={status} />
       <SearchBox search={ready?.search} communities={ready?.model.communities} />
       <div className="eog-topbar__end">
-        {ready && <ShareButton />}
-        <StatusIndicator {...status} />
         {ready && <GraphStats model={ready.model} />}
+        {ready && <ShareButton />}
       </div>
     </header>
   )

@@ -6,27 +6,16 @@
   isolation: isolate;
 }
 
-/* ---------- World backdrop: static layers, no animation ---------- */
+/* ---------- World backdrop: deep space, static, no animation ---------- */
 .eog-backdrop {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 58% 52% at 50% 50%, var(--eog-bg-glow), transparent 72%),
-    radial-gradient(ellipse 70% 50% at 82% 8%, rgba(108, 92, 231, 0.07), transparent 70%),
-    radial-gradient(ellipse 90% 60% at 50% 115%, rgba(79, 227, 255, 0.05), transparent 65%),
-    linear-gradient(180deg, #050a17 0%, var(--eog-bg) 45%, var(--eog-bg-deep) 100%);
-}
-
-.eog-backdrop::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(var(--eog-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--eog-grid) 1px, transparent 1px);
-  background-size: 56px 56px;
-  background-position: center;
-  mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, #000 10%, transparent 82%);
+    radial-gradient(ellipse 46% 50% at 50% 50%, var(--eog-bg-glow), transparent 72%),
+    radial-gradient(ellipse 50% 40% at 82% 10%, var(--eog-bg-violet), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 14% 92%, var(--eog-bg-violet), transparent 70%),
+    radial-gradient(ellipse 80% 70% at 50% 50%, #071a3d33, transparent 80%),
+    radial-gradient(circle at 50% 50%, var(--eog-bg) 0%, var(--eog-bg-deep) 100%);
 }
 
 /* Vignette: pulls the eye to the centre and gives the HUD edges some depth. */
@@ -37,23 +26,6 @@
   box-shadow: inset 0 0 220px 40px var(--eog-bg-deep);
 }
 
-.eog-particles {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  fill: #a9c8ff;
-  mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, #000 30%, transparent 95%);
-}
-
-.eog-orbits {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  color: var(--eog-orbit);
-}
-
 .eog-world {
   position: absolute;
   inset: 0;
@@ -62,6 +34,15 @@
 
 .eog-world canvas {
   outline: none;
+}
+
+/* Stars and nebulae: behind Sigma's canvases, never in the way of the pointer. */
+.eog-universe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* ---------- HUD layer ---------- */
@@ -182,7 +163,7 @@
   }
 
   /* Same for the bottom read-out: view and zoom stay, the scope is in the explorer. */
-  .eog-readout > :not(:nth-last-child(-n + 2)) {
+  .eog-readout__stats > :not(:nth-last-child(-n + 2)) {
     display: none;
   }
 }

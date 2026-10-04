@@ -1,0 +1,547 @@
+/*
+ * Observatorio HUD pieces: explorer rail, legend, scale, skip links, and the
+ * accessibility fallbacks (forced colours). Layout of the older pieces lives
+ * in layout.css; their look in components.css.
+ */
+
+/* ---------- Explorer rail: the explorer folded into 44 px buttons ---------- */
+.eog-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  background: var(--eog-surface);
+  border: 1px solid var(--eog-border);
+  border-radius: var(--eog-radius-md);
+  box-shadow: var(--eog-shadow-panel);
+  backdrop-filter: blur(var(--eog-panel-blur));
+}
+
+.eog-rail .eog-button {
+  min-width: var(--eog-touch-size);
+  height: var(--eog-touch-size);
+}
+
+/* The first entry is the explorer itself: a hairline sets it apart. */
+.eog-rail > .eog-button:first-child {
+  border-bottom-color: var(--eog-border-soft);
+  border-radius: var(--eog-radius-sm) var(--eog-radius-sm) 0 0;
+}
+
+.eog-tip[data-side='right'] {
+  left: calc(100% + 8px);
+  top: 50%;
+  bottom: auto;
+  transform: translate(-4px, -50%);
+}
+
+.eog-button:hover > .eog-tip[data-side='right'],
+.eog-button:focus-visible > .eog-tip[data-side='right'] {
+  transform: translate(0, -50%);
+}
+
+/* ---------- Legend: bottom-left, folded into one button ---------- */
+.eog-legend {
+  position: absolute;
+  left: var(--eog-gutter);
+  bottom: var(--eog-gutter);
+  z-index: var(--eog-z-panel);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--eog-space-2);
+}
+
+.eog-legend__toggle {
+  height: var(--eog-dock-height);
+  padding: 0 var(--eog-space-4);
+  background: var(--eog-surface);
+  border-color: var(--eog-border);
+  border-radius: var(--eog-radius-md);
+  backdrop-filter: blur(var(--eog-panel-blur));
+}
+
+.eog-legend__toggle[aria-expanded='true'] {
+  color: var(--eog-cyan);
+  border-color: var(--eog-cyan-line);
+}
+
+.eog-legend__panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--eog-space-2));
+  width: 288px;
+  padding: var(--eog-space-4);
+  background: var(--eog-surface-elevated);
+  border: 1px solid var(--eog-border-strong);
+  border-radius: var(--eog-radius-md);
+  box-shadow: var(--eog-shadow-float);
+  animation: eog-rise var(--eog-dur) var(--eog-ease);
+}
+
+.eog-legend__panel[hidden] {
+  display: none;
+}
+
+@keyframes eog-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.eog-legend__title {
+  margin-bottom: var(--eog-space-3);
+  font-family: var(--eog-font-mono);
+  font-size: var(--eog-text-xs);
+  font-weight: 500;
+  letter-spacing: var(--eog-tracking-label);
+  text-transform: uppercase;
+  color: var(--eog-text-muted);
+}
+
+.eog-legend__list {
+  display: grid;
+  gap: var(--eog-space-2);
+}
+
+.eog-legend__item dt {
+  display: flex;
+  align-items: center;
+  gap: var(--eog-space-2);
+  font-weight: 500;
+  color: var(--eog-text);
+}
+
+.eog-legend__item dd {
+  padding-left: 26px;
+  font-size: var(--eog-text-sm);
+  color: var(--eog-text-muted);
+}
+
+/* Samples of each mark, drawn in CSS so the key matches the canvas. */
+.eog-legend__mark {
+  flex: none;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.eog-legend__mark--size {
+  background:
+    radial-gradient(circle at 30% 60%, #9aa9ff 0 3px, transparent 3.5px),
+    radial-gradient(circle at 68% 45%, #e8ecff 0 2px, #7d86ff 2px 6px, transparent 6.5px);
+  border-radius: 0;
+}
+
+.eog-legend__mark--family {
+  background: linear-gradient(135deg, #4fb4ff, #4d86ff 40%, #8a6bff 75%, #b06cff);
+}
+
+.eog-legend__mark--muted {
+  background: #4a5878;
+}
+
+.eog-legend__mark--nebula {
+  background: radial-gradient(circle, rgba(130, 140, 255, 0.55), rgba(130, 140, 255, 0) 70%);
+}
+
+.eog-legend__mark--aggregate {
+  border: 2px solid #8a90ff;
+  background: radial-gradient(circle, #e8ecff 0 2px, rgba(138, 144, 255, 0.25) 2.5px);
+}
+
+.eog-legend__mark--selected {
+  width: 18px;
+  background: radial-gradient(circle, #9aa9ff 0 4px, transparent 4.5px 6px, var(--eog-cyan) 6px 7.5px, transparent 8px);
+}
+
+.eog-legend__mark--flow {
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #20325a 0 55%, var(--eog-cyan) 55% 75%, #20325a 75%);
+}
+
+/* ---------- Orientation: the three scales under the view read-out ---------- */
+.eog-readout__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--eog-space-5);
+}
+
+.eog-readout {
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+}
+
+.eog-scale {
+  display: flex;
+  gap: 3px;
+}
+
+.eog-scale__step {
+  width: 18px;
+  height: 2px;
+  background: var(--eog-border-strong);
+  transition: background-color var(--eog-dur) var(--eog-ease);
+}
+
+.eog-scale__step[data-active='true'] {
+  background: var(--eog-cyan);
+}
+
+/* ---------- Skip links: visible only when reached with the keyboard ---------- */
+.eog-skip a {
+  position: absolute;
+  top: var(--eog-gutter);
+  left: var(--eog-gutter);
+  z-index: calc(var(--eog-z-tooltip) + 1);
+  padding: var(--eog-space-2) var(--eog-space-3);
+  background: var(--eog-surface-solid);
+  border: 1px solid var(--eog-cyan-line);
+  border-radius: var(--eog-radius-sm);
+  color: var(--eog-cyan);
+  transform: translateY(-200%);
+}
+
+.eog-skip a:focus-visible {
+  transform: none;
+}
+
+/* A panel reached through a skip link takes focus as a whole: its ring is enough. */
+.eog-panel:focus {
+  outline: none;
+}
+
+.eog-panel:focus-visible {
+  outline: 2px solid var(--eog-cyan);
+  outline-offset: 2px;
+}
+
+/* ---------- Tablet and phone: 44 px targets ---------- */
+@media (max-width: 1100px) {
+  :root {
+    --eog-control-size: var(--eog-touch-size);
+  }
+}
+
+@media (max-width: 720px) {
+  /* The legend and the folded explorer sections wait in the explorer sheet. */
+  .eog-legend,
+  .eog-rail > .eog-button:not(:first-child) {
+    display: none;
+  }
+
+  .eog-rail {
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .eog-scale {
+    display: none;
+  }
+}
+
+/* ---------- Forced colours (Windows high contrast) ---------- */
+@media (forced-colors: active) {
+  .eog-panel,
+  .eog-dock,
+  .eog-rail,
+  .eog-legend__toggle,
+  .eog-legend__panel,
+  .eog-search,
+  .eog-results {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    backdrop-filter: none;
+  }
+
+  .eog-button[aria-pressed='true'],
+  .eog-legend__toggle[aria-expanded='true'],
+  .eog-scale__step[data-active='true'] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .eog-result[aria-selected='true'],
+  .eog-row[aria-pressed='true'],
+  .eog-row[aria-current='true'] {
+    outline: 2px solid Highlight;
+  }
+
+  .eog-swatch,
+  .eog-legend__mark,
+  .eog-status__dot {
+    forced-color-adjust: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* ---------- Instrument plates: identity, metrics and orientation ---------- */
+/* Glass behind every cluster of HUD text, so nodes passing under it never
+   compete with the figures. Same surface as the panels and the dock. */
+.eog-wordmark,
+.eog-topbar__end,
+.eog-readout {
+  min-height: var(--eog-topbar-height);
+  padding: 0 var(--eog-space-3);
+  background: var(--eog-surface);
+  border: 1px solid var(--eog-border-soft);
+  border-radius: var(--eog-radius-md);
+  backdrop-filter: blur(var(--eog-panel-blur));
+}
+
+/* Sized to its content: the plate must not stretch over the whole grid column. */
+.eog-wordmark {
+  justify-self: start;
+  padding-left: var(--eog-space-2);
+}
+
+.eog-topbar__end {
+  padding-right: 2px;
+}
+
+.eog-readout {
+  min-height: 0;
+  padding: var(--eog-space-1) var(--eog-space-3);
+}
+
+/* Four figures in a narrow inspector: smaller names, no ellipsis. */
+@media (max-width: 1100px) {
+  .eog-figures {
+    gap: var(--eog-space-1);
+  }
+
+  .eog-figure__label {
+    font-size: 0.625rem;
+    text-overflow: clip;
+  }
+}
+
+@media (max-width: 720px) {
+  /* On a phone the header is one row of 44 px: the plates follow it. */
+  .eog-wordmark {
+    min-height: 44px;
+  }
+
+  /* Only the share button is left there: it has its own frame. */
+  .eog-topbar__end {
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    backdrop-filter: none;
+  }
+
+  .eog-rail > .eog-button:first-child {
+    border-bottom-color: transparent;
+    border-radius: var(--eog-radius-sm);
+  }
+
+  .eog-readout {
+    padding: var(--eog-space-1) var(--eog-space-2);
+  }
+}
+
+/* ======================================================================
+   Observatorio skin: thin lines, corner brackets, technical type.
+   Cyan = interaction, violet = secondary, white = focus.
+   ====================================================================== */
+
+/* Corner brackets on every instrument (panels draw theirs with pseudo-elements). */
+.eog-wordmark,
+.eog-topbar__end,
+.eog-readout,
+.eog-dock,
+.eog-legend__toggle,
+.eog-rail,
+.eog-search {
+  background-image:
+    linear-gradient(var(--eog-bracket), var(--eog-bracket)),
+    linear-gradient(var(--eog-bracket), var(--eog-bracket)),
+    linear-gradient(var(--eog-bracket), var(--eog-bracket)),
+    linear-gradient(var(--eog-bracket), var(--eog-bracket));
+  background-size:
+    var(--eog-bracket-size) 1px,
+    1px var(--eog-bracket-size),
+    var(--eog-bracket-size) 1px,
+    1px var(--eog-bracket-size);
+  background-position:
+    0 0,
+    0 0,
+    100% 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+}
+
+/* Identity: the name, then what it is and whether it is live. */
+.eog-wordmark__name {
+  font-size: 0.9375rem;
+  letter-spacing: 0.32em;
+  background: linear-gradient(90deg, #f5fbff, #bfefff 60%, #b4a5ff);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.eog-wordmark__line {
+  display: flex;
+  align-items: center;
+  gap: var(--eog-space-2);
+}
+
+.eog-wordmark__tagline {
+  font-family: var(--eog-font-mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--eog-text-faint);
+  white-space: nowrap;
+}
+
+.eog-wordmark__tagline::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 9px;
+  margin-left: var(--eog-space-2);
+  vertical-align: -1px;
+  background: var(--eog-border-strong);
+}
+
+.eog-wordmark .eog-status__main {
+  font-size: 0.5625rem;
+  letter-spacing: 0.2em;
+}
+
+/* Section titles: technical, quiet, uppercase. */
+.eog-heading {
+  font-family: var(--eog-font-mono);
+  font-size: var(--eog-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--eog-text-muted);
+}
+
+.eog-section__count {
+  color: var(--eog-violet-text);
+}
+
+/* Panel title: a small diamond marks the instrument. */
+.eog-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--eog-space-2);
+  letter-spacing: 0.2em;
+}
+
+.eog-panel__title::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--eog-cyan);
+  transform: rotate(45deg);
+  box-shadow: 0 0 6px rgba(79, 227, 255, 0.5);
+}
+
+.eog-panel__header {
+  border-bottom-color: var(--eog-border-soft);
+  background: linear-gradient(90deg, rgba(79, 227, 255, 0.05), transparent 45%);
+}
+
+/* Rows: violet on hover (secondary), cyan when chosen (interaction). */
+.eog-row:hover {
+  background: var(--eog-violet-soft);
+}
+
+.eog-section + .eog-section {
+  border-top-color: var(--eog-border-soft);
+}
+
+/* Search as a command line. */
+.eog-search {
+  background-color: rgba(4, 9, 20, 0.88);
+  border-color: var(--eog-border-strong);
+}
+
+.eog-search input::placeholder {
+  font-family: var(--eog-font-mono);
+  font-size: var(--eog-text-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.eog-search:focus-within {
+  --eog-bracket: var(--eog-cyan);
+}
+
+/* Figures in the header and the read-out: mono labels, quiet separators. */
+.eog-stats .eog-stat + .eog-stat {
+  padding-left: var(--eog-space-4);
+  border-left: 1px solid var(--eog-border-soft);
+}
+
+.eog-stats,
+.eog-readout__stats {
+  gap: var(--eog-space-4);
+}
+
+.eog-stat .eog-label {
+  font-size: 0.5625rem;
+  letter-spacing: 0.2em;
+}
+
+/* Inspector header: type, name, community, path. */
+.eog-node-identity {
+  background:
+    linear-gradient(180deg, rgba(79, 227, 255, 0.05), transparent 70%),
+    var(--eog-surface-solid);
+}
+
+.eog-node__community {
+  display: flex;
+  align-items: center;
+  gap: var(--eog-space-2);
+  margin-top: var(--eog-space-1);
+  font-size: var(--eog-text-sm);
+  color: var(--eog-violet-text);
+}
+
+.eog-tag--accent {
+  box-shadow: inset 0 0 8px rgba(79, 227, 255, 0.15);
+}
+
+.eog-figure__value {
+  color: #f5fbff;
+}
+
+.eog-node--metadata {
+  padding-top: 0;
+}
+
+/* The dock: the same instrument family. */
+.eog-dock {
+  border-color: var(--eog-border);
+}
+
+.eog-dock__divider {
+  background: var(--eog-border-soft);
+}
+
+@media (max-width: 1100px) {
+  .eog-wordmark__tagline {
+    display: none;
+  }
+}

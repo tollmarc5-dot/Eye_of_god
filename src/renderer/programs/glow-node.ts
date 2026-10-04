@@ -21,6 +21,12 @@ export interface NodeFx {
 
 /** The halo reaches this many core radii from the centre. */
 const HALO_REACH = 3.2
+/**
+ * A collapsed community is already a large disc: a short, weaker halo keeps it
+ * from blooming over the whole view when the camera gets close.
+ */
+const AGGREGATE_HALO_REACH = 1.7
+const AGGREGATE_HALO_STRENGTH = 0.55
 const NO_COMMUNITY = -1
 
 const VERTEX_SHADER = /* glsl */ `
@@ -102,8 +108,11 @@ void main(void) {
   coreColor = mix(coreColor, vec3(1.0), centre * 0.6 * v_glow);
 
   // Halo: fades out smoothly to nothing at the edge of the triangle, tinted cyan while the node is active.
-  float falloff = 1.0 - clamp((dist - v_radius) / (v_radius * (reach - 1.0)), 0.0, 1.0);
-  float halo = pow(falloff, 2.4) * 0.55 * v_glow * u_glowLevel * (1.0 - core);
+  float isAggregate = step(0.5, v_aggregate);
+  float haloReach = mix(reach, ${AGGREGATE_HALO_REACH.toFixed(2)}, isAggregate);
+  float falloff = 1.0 - clamp((dist - v_radius) / (v_radius * (haloReach - 1.0)), 0.0, 1.0);
+  float halo = pow(falloff, 2.4) * 0.55 * v_glow * u_glowLevel * (1.0 - core)
+    * mix(1.0, ${AGGREGATE_HALO_STRENGTH.toFixed(2)}, isAggregate);
   vec3 haloColor = mix(v_color.rgb, u_accentColor, v_accent * 0.75);
 
   // Ring: selected node only, thin, a fixed gap outside the core, breathing slowly.
@@ -115,7 +124,7 @@ void main(void) {
   // and a solid centre, so it never reads as one very large node.
   float rim = smoothstep(v_radius - border * 3.5, v_radius - border * 2.0, dist) * core;
   float centreDot = 1.0 - smoothstep(v_radius * 0.16, v_radius * 0.16 + border, dist);
-  float body = mix(1.0, clamp(0.26 + rim + centreDot, 0.0, 1.0), step(0.5, v_aggregate));
+  float body = mix(1.0, clamp(0.26 + rim + centreDot, 0.0, 1.0), isAggregate);
   core *= body;
 
   float alpha = clamp(core + halo + ring, 0.0, 1.0);

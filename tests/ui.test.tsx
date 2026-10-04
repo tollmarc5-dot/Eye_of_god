@@ -77,7 +77,7 @@ describe('InspectorPanel', () => {
     renderWithCommands(<InspectorPanel model={model} index={index} graph={graph} />)
 
     expect(screen.getByText('No node selected')).toBeDefined()
-    expect(screen.getByText('Select a node to inspect it.')).toBeDefined()
+    expect(screen.getByText('Select a node in the graph, or press / to search.')).toBeDefined()
   })
 
   test('shows the selected node from the store', () => {
@@ -87,7 +87,7 @@ describe('InspectorPanel', () => {
 
     expect(panel.getByText('s()')).toBeDefined()
     expect(panel.getByText('app/public/lib/xlsx.full.min.js')).toBeDefined()
-    expect(panel.getByText('Community 1')).toBeDefined()
+    expect(panel.getAllByText('Community 1').length).toBeGreaterThan(0)
     expect(panel.getByText('Third-party code')).toBeDefined()
     expect(panel.getByText('Callable')).toBeDefined()
   })

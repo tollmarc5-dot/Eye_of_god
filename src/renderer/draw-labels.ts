@@ -83,6 +83,48 @@ function drawLabelText(context: CanvasRenderingContext2D, label: string, x: numb
   context.fillText(label, x, y)
 }
 
+/** A point the label layer names on its own, centred: a constellation at universe scale. */
+export interface NamedPoint {
+  readonly key: string
+  readonly name: string
+  readonly x: number
+  readonly y: number
+}
+
+/** Constellation names: spaced mono capitals, quieter than node labels. */
+const CONSTELLATION_FONT = `500 ${CANVAS_THEME.constellationSize}px ${CANVAS_THEME.monoFont}`
+const CONSTELLATION_TRACKING = '2px'
+const CONSTELLATION_MAX_CHARS = 28
+
+function constellationText(name: string): string {
+  const upper = name.toUpperCase()
+  return upper.length > CONSTELLATION_MAX_CHARS ? `${upper.slice(0, CONSTELLATION_MAX_CHARS - 1).trimEnd()}…` : upper
+}
+
+function withConstellationType<T>(context: CanvasRenderingContext2D, run: () => T): T {
+  const font = context.font
+  const tracking = context.letterSpacing
+  context.font = CONSTELLATION_FONT
+  context.letterSpacing = CONSTELLATION_TRACKING
+  try {
+    return run()
+  } finally {
+    context.font = font
+    context.letterSpacing = tracking
+  }
+}
+
+function drawConstellationText(context: CanvasRenderingContext2D, label: string, x: number, y: number): void {
+  withConstellationType(context, () => {
+    context.lineJoin = 'round'
+    context.lineWidth = HALO_WIDTH
+    context.strokeStyle = CANVAS_THEME.labelHalo
+    context.strokeText(label, x, y)
+    context.fillStyle = CANVAS_THEME.constellation
+    context.fillText(label, x, y)
+  })
+}
+
 export interface LabelLayer {
   /** Sigma's `defaultDrawNodeLabel`: records the candidate, draws nothing yet. */
   collect(context: CanvasRenderingContext2D, data: LabelData, settings: LabelSettings): void
@@ -92,7 +134,7 @@ export interface LabelLayer {
    * After Sigma has handed over every candidate of the frame: places and draws
    * them, inside `bounds` (the viewport minus the HUD) when given.
    */
-  draw(bounds?: LabelBounds): void
+  draw(bounds?: LabelBounds, named?: readonly NamedPoint[]): void
   /** How far a selected node's plate reaches right of the node centre, in pixels; 0 before the first frame. */
   plateReach(data: Pick<LabelData, 'size' | 'label'>): number
 }
@@ -104,9 +146,13 @@ export interface LabelLayer {
  * priority order (see label-layout), and drawn once. Selected and hovered
  * nodes keep their plate on Sigma's hover layer: here they only reserve room.
  */
-export function createLabelLayer(): LabelLayer {
+export function createLabelLayer(
+  /** The label canvas and Sigma's label settings, for frames where Sigma hands over no candidate. */
+  fallback: () => { context: CanvasRenderingContext2D; settings: LabelSettings } | null = () => null,
+): LabelLayer {
   const place = createLabelPlacer()
   const widths = new Map<string, number>()
+  const namedWidths = new Map<string, number>()
   let widthFont = ''
   let candidates: LabelCandidate[] = []
   let target: { context: CanvasRenderingContext2D; settings: LabelSettings } | null = null
@@ -127,8 +173,10 @@ export function createLabelLayer(): LabelLayer {
     reset() {
       candidates = []
     },
-    draw(bounds) {
-      if (!target || candidates.length === 0) return
+    draw(bounds, named = []) {
+      if (candidates.length === 0 && named.length === 0) return
+      target ??= fallback()
+      if (!target) return
       const { context, settings } = target
       setFont(context, settings)
       // Text widths only depend on the font: measured once per label.
@@ -144,8 +192,20 @@ export function createLabelLayer(): LabelLayer {
         }
         return width
       }
-      for (const { candidate, textX } of place(candidates, { labelSize: settings.labelSize, measure }, bounds)) {
-        drawLabelText(context, candidate.label, textX, candidate.y)
+      const names = named.map((point): LabelCandidate => {
+        const label = constellationText(point.name)
+        let width = namedWidths.get(label)
+        if (width === undefined) {
+          width = withConstellationType(context, () => context.measureText(label).width)
+          namedWidths.set(label, width)
+        }
+        const { key, x, y } = point
+        return { key, label, x, y, size: 0, rank: LABEL_RANK.constellation, style: 'constellation', width }
+      })
+      const all = names.length === 0 ? candidates : [...candidates, ...names]
+      for (const { candidate, textX } of place(all, { labelSize: settings.labelSize, measure }, bounds)) {
+        if (candidate.style === 'constellation') drawConstellationText(context, candidate.label, textX, candidate.y)
+        else drawLabelText(context, candidate.label, textX, candidate.y)
       }
     },
     plateReach(data) {

@@ -24,7 +24,29 @@ La información usa blanco frío y azules apagados. Nada más lleva color.
 | Anillo | — | — | Fino, cian, a distancia fija del núcleo, con un pulso lento |
 | Vecinos | — | Algo más grandes y luminosos | Igual |
 | Resto | — | Azul noche, sin halo, sin etiqueta | Igual |
-| Relaciones | Muy oscuras; tinte de comunidad si son internas | Cian, más gruesas, con pulsos hacia el destino | Igual |
+| Relaciones | Muy oscuras; tinte de comunidad si son internas | Cian, más gruesas | Igual |
+
+**El ojo.** El grafo completo se lee como un ojo, dibujado a partir de él en
+la capa de universo (estático): párpados en almendra alrededor del anillo de
+nodos, limbo con escala fina, anillos del iris donde están de verdad un cuarto,
+la mitad y tres cuartos de los nodos, conexiones radiales hacia el centro de
+cada comunidad grande, y la pupila blanco-cian en el centro del grafo
+encuadrado. Se desvanece al acercarse (ratio 0,7 → 0,3); la pupila queda. El
+margen de Sigma es proporcional a la vista (14,5 % del lado menor) para que el
+ojo entero entre en el primer encuadre.
+
+**Universo.** Detrás del grafo, en la capa de universo del renderer: dos capas
+de estrellas con parallax (3 % y 8 % del movimiento del grafo), una nebulosa
+tenue por comunidad grande (sus nodos reales, su extensión real). A escala Universe, los nombres de las comunidades mayores aparecen en
+mayúsculas espaciadas (Plex Mono 11 px, blanco al 72 %) sobre su centro; la
+comunidad seleccionada se nombra a cualquier escala. Sin órbitas ni marcas de
+mira: nada decorativo en espacio de pantalla.
+
+**Color de comunidad.** Se mantiene el arco azul→violeta por comunidad. Una
+paleta por proyecto se validó con el script de dataviz y falla en todas sus
+variantes (azul y violeta son indistinguibles con protanopía/deuteranopía, ΔE
+1–2): la identidad de una comunidad va por nombre, posición y nebulosa, nunca
+solo por color. La leyenda lo explica.
 
 **Agregado de comunidad.** Una comunidad colapsada es un disco translúcido
 con borde brillante y punto central, del color de la comunidad y de tamaño
@@ -64,17 +86,39 @@ Las dos fuentes van empaquetadas con la app (`@fontsource`), sin CDN.
 | Papel | Estilo |
 |---|---|
 | Wordmark | Mono, mayúsculas, espaciado `--eog-tracking-display` |
-| Rótulo (`.eog-label`) | Mono 11 px, mayúsculas, espaciado `--eog-tracking-label` |
+| Rótulo (`.eog-label`) | Mono 11 px, mayúsculas, espaciado `--eog-tracking-label` (0,12 em) |
+| Encabezado de sección (`.eog-heading`) | Sans 600 13 px, sin mayúsculas forzadas |
 | Cuerpo | Sans 13 px |
 | Valor técnico (`.eog-mono`) | Mono 12 px, cifras tabulares |
-| Nombre de nodo | Sans 18 px |
+| Nombre de nodo o comunidad | Sans 600 20 px (`--eog-text-title`), tracking −0,01 em |
+| Cifras (`.eog-figure`) | Mono 500 15 px tabulares, con su nombre debajo, sin cajas |
+| Nombre de constelación | Mono 500 11 px, mayúsculas, 2 px de tracking, en el canvas |
 
 ## Espaciado y forma
 
 - Escala de espacio: 4, 8, 12, 16, 24, 32 px (`--eog-space-1` a `-6`).
 - Radios pequeños: 3 px en controles, 6 px en paneles.
-- Controles de 40 px de lado como mínimo.
+- Controles de 40 px en escritorio y 44 px (`--eog-touch-size`) en tableta y móvil.
 - Los paneles llevan corchetes de esquina en cian tenue, no sombras de tarjeta.
+- Bordes de 1 px en tres intensidades: `--eog-border-soft` (10 %), `--eog-border`
+  (16 %), `--eog-border-strong` (28 %).
+- Toda agrupación de texto del HUD va sobre una placa de cristal (marca,
+  métricas, orientación, leyenda): los nodos que pasan por debajo nunca compiten
+  con las cifras. Lo que flota sobre otra superficie (la leyenda abierta) usa
+  `--eog-surface-elevated` y `--eog-shadow-float`, teñida de azul marino.
+
+### Disposición del HUD
+
+| Zona | Pieza |
+|---|---|
+| Arriba a la izquierda | Identidad y estado del sistema |
+| Arriba al centro | Búsqueda (`/`, ⌘K o Ctrl K) |
+| Arriba a la derecha | Métricas y enlace |
+| Izquierda | Explorer; plegado, un rail de 44 px (Explorer, proyectos, comunidades, nodos clave, filtros) |
+| Derecha | Inspector |
+| Abajo a la izquierda | Leyenda (plegada en un botón; oculta en móvil) |
+| Abajo al centro | Dock de navegación y cámara |
+| Abajo a la derecha | Orientación: escala y zoom, con las tres escalas marcadas |
 
 ## Componentes
 
@@ -141,16 +185,20 @@ Definidos en `src/renderer/zoom-level.ts`.
 
 ## Motion
 
-- Duraciones: 120, 180 y 280 ms, con una sola curva (`--eog-ease`).
+- Duraciones: 120, 180 y 280 ms, con una sola curva (`--eog-ease`); cerrar
+  dura el 70 % de abrir (`--eog-dur-exit`). Los paneles aparecen con opacidad y
+  8 px de desplazamiento.
 - Solo se animan `transform`, `opacity`, colores y sombras; nunca `transition: all`.
 - En la interfaz nada se anima de forma permanente, salvo la barra de la
   pantalla de carga.
-- El grafo sí está vivo: cada nodo deriva lentamente unos píxeles alrededor de
-  su posición (periodos de 13 a 33 s), con una parte compartida por su
-  comunidad. Debe notarse que el sistema respira, no que los nodos se mueven.
-- Con `prefers-reduced-motion`, las duraciones pasan a 0, la cámara salta sin
-  transición y el grafo queda quieto. Halos, anillo y cambios de estado siguen
-  siendo visibles.
+- **Quieto en reposo.** Sin entrada del usuario no se dibuja nada: ni deriva,
+  ni pulsos, ni partículas, ni cámara automática. Solo se mueven el hover, la
+  selección, los paneles y las transiciones de cámara. La deriva del grafo vivo
+  (Fase 3) queda disponible tras la opción `living` del renderer, apagada.
+- Un nodo fuera de pantalla se alcanza con un vuelo: la cámara sube un poco,
+  cruza y baja sobre él. Cualquier entrada interrumpe el vuelo.
+- Con `prefers-reduced-motion`, las duraciones pasan a 0 y la cámara salta sin
+  transición. Halos, anillo, ojo, nebulosas y cambios de estado siguen visibles.
 
 ## Accesibilidad
 
@@ -164,6 +212,10 @@ Definidos en `src/renderer/zoom-level.ts`.
   comprueba leyendo `tokens.css`.
 - Ninguna etiqueta del grafo se dibuja bajo el HUD, y el nodo seleccionado y su
   placa quedan siempre en el área libre.
+- Enlaces de salto («Skip to search», «Skip to the inspector»), lo primero del
+  orden de tabulación.
+- Colores forzados (`forced-colors: active`): paneles, dock, rail y leyenda con
+  bordes del sistema; estados activos con `Highlight`.
 - En el Inspector, el tipo y el nombre del nodo quedan fijos arriba al hacer
   scroll.
 

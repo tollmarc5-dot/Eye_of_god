@@ -8,8 +8,8 @@ import { quantizeRect, sameRects, type ScreenRect } from '@/renderer/free-area'
  * purpose: it is transient, and typing must never move the camera.
  */
 export const HUD_ZONE_SELECTOR = [
-  // The wordmark's children: the element itself stretches over its whole grid column.
-  '.eog-wordmark > *',
+  // Identity plate, sized to its content (justify-self: start).
+  '.eog-wordmark',
   '.eog-topbar__search',
   '.eog-topbar__end',
   '.eog-explorer',
@@ -18,6 +18,8 @@ export const HUD_ZONE_SELECTOR = [
   '.eog-dock',
   '.eog-readout',
   '.eog-mode',
+  '.eog-legend__toggle',
+  '.eog-legend__panel',
 ].join(', ')
 
 /** Measurements closer than this are the same: no churn while a panel settles. */

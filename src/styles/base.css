@@ -84,6 +84,16 @@ ul {
   color: var(--eog-text-faint);
 }
 
+/* Section heading inside a panel: sentence case, the reading voice of the HUD. */
+.eog-heading {
+  font-family: var(--eog-font-sans);
+  font-size: var(--eog-text-md);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--eog-text);
+}
+
 .eog-mono {
   font-family: var(--eog-font-mono);
   font-size: var(--eog-text-sm);

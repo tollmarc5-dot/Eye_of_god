@@ -4,6 +4,8 @@ import { useAppStore } from '@/state/store'
 import type { GraphModel } from '@/types/graph'
 import { formatCount, Stat } from '@/ui/primitives'
 
+const SCALE_ORDER: readonly ZoomLevel[] = ['universe', 'structure', 'detail']
+
 const LEVEL_NAMES: Readonly<Record<ZoomLevel, string>> = {
   universe: 'Universe',
   structure: 'Structure',
@@ -24,11 +26,19 @@ export function ViewReadout({ model }: { readonly model: GraphModel }) {
           .filter(Boolean)
           .join(' / ')
   return (
-    <dl className="eog-readout">
-      {projectPath !== null && <Stat label="Active project" value={projectPath} />}
-      {community && <Stat label="Active community" value={community.name} />}
-      <Stat label="View" value={LEVEL_NAMES[view.level]} />
-      <Stat label="Zoom" value={`${formatCount(view.zoomPercent)}%`} />
-    </dl>
+    <div className="eog-readout">
+      <dl className="eog-readout__stats">
+        {projectPath !== null && <Stat label="Active project" value={projectPath} />}
+        {community && <Stat label="Active community" value={community.name} />}
+        <Stat label="View" value={LEVEL_NAMES[view.level]} />
+        <Stat label="Zoom" value={`${formatCount(view.zoomPercent)}%`} />
+      </dl>
+      {/* The three scales, far to close; the View figure names the current one. */}
+      <span className="eog-scale" aria-hidden="true">
+        {SCALE_ORDER.map((level) => (
+          <span key={level} className="eog-scale__step" data-active={level === view.level} />
+        ))}
+      </span>
+    </div>
   )
 }

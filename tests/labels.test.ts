@@ -346,3 +346,47 @@ describe('labels and the HUD', () => {
     expect(place(scene, metrics, inViewport)).not.toBe(first)
   })
 })
+
+describe('constellation names', () => {
+  const name = (key: string, x: number, y: number, label = key) =>
+    candidate(key, x, y, { label, size: 0, rank: LABEL_RANK.constellation, style: 'constellation', width: label.length * 9 })
+
+  test('a constellation name is centred on its point, in its own measured width', () => {
+    const [placed] = placeLabels([name('core', 500, 300, 'CORE API')], metrics)
+
+    expect(placed?.side).toBe('center')
+    expect(placed?.textX).toBe(500 - (8 * 9) / 2)
+  })
+
+  test('ranks under forced labels and above aggregates and regular labels', () => {
+    expect(LABEL_RANK.forced).toBeLessThan(LABEL_RANK.constellation)
+    expect(LABEL_RANK.constellation).toBeLessThan(LABEL_RANK.aggregate)
+
+    const placed = placeLabels([candidate('node', 470, 300), name('core', 500, 300, 'CORE API')], metrics)
+    expect(placed.map((p) => p.candidate.key)).toEqual(['core'])
+  })
+
+  test('never goes under the HUD or past the edge: it is left out instead', () => {
+    const hud = { left: 0, top: 0, right: 300, bottom: 900 }
+    const bounds = { reserved: [hud], width: 1440, height: 900 }
+
+    expect(placeLabels([name('under', 150, 300)], metrics, bounds)).toEqual([])
+    expect(placeLabels([name('edge', 1435, 300, 'A LONG NAME')], metrics, bounds)).toEqual([])
+    expect(placeLabels([name('free', 700, 300)], metrics, bounds)).toHaveLength(1)
+  })
+
+  test('the layer draws named points even in a frame with no node label, in capitals, cut at 28 characters', () => {
+    const { context, texts } = recordingContext()
+    const layer = createLabelLayer(() => ({ context, settings: SETTINGS }))
+
+    layer.reset()
+    layer.draw({ reserved: [] }, [
+      { key: 'c1', name: 'Python build and E2E scripts', x: 300, y: 200 },
+      { key: 'c2', name: 'A community with a very long descriptive name', x: 300, y: 500 },
+    ])
+
+    expect(texts.map((t) => t.text)).toEqual(['PYTHON BUILD AND E2E SCRIPTS', 'A COMMUNITY WITH A VERY LON…'])
+    // The label font is restored for the node labels of the next frame.
+    expect(context.font).toContain('IBM Plex Sans')
+  })
+})
